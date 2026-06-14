@@ -18,6 +18,7 @@ class BenchmarkState:
     current_config: dict[str, Any] | None = None
     error: str | None = None
     cancel_requested: bool = False
+    task: asyncio.Task[None] | None = None
 
 
 RUNS: dict[str, BenchmarkState] = {}
@@ -81,8 +82,17 @@ async def run_benchmark(state: BenchmarkState, matrix: list[dict[str, Any]]) -> 
                     }
                 )
             except Exception as exc:  # pragma: no cover - external service failure shape varies
+                if state.cancel_requested:
+                    state.status = "cancelled"
+                    return
                 state.results.append({"config": config, "metrics": sample, "status": "failed", "error": str(exc)})
+        if state.cancel_requested:
+            state.status = "cancelled"
+            return
         state.status = "completed"
+    except asyncio.CancelledError:
+        state.status = "cancelled"
+        raise
     except Exception as exc:  # pragma: no cover
         state.status = "failed"
         state.error = str(exc)
@@ -98,5 +108,16 @@ def start_benchmark(payload: dict[str, Any]) -> BenchmarkState:
         prompt=payload["prompt"],
     )
     RUNS[benchmark_id] = state
-    asyncio.create_task(run_benchmark(state, matrix))
+    state.task = asyncio.create_task(run_benchmark(state, matrix))
+    return state
+
+
+def cancel_benchmark_run(benchmark_id: str) -> BenchmarkState | None:
+    state = RUNS.get(benchmark_id)
+    if not state:
+        return None
+    state.cancel_requested = True
+    state.status = "cancelled"
+    if state.task and not state.task.done():
+        state.task.cancel()
     return state

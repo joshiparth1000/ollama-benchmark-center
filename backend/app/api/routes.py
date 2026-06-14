@@ -1,7 +1,9 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import require_backend_api_key
 from app.db.session import get_session
 from app.repositories.benchmarks import BenchmarkRepository
 from app.repositories.hosts import HostRepository
@@ -21,6 +23,7 @@ from app.services.exports import render_export
 from app.services.recommendations import choose_recommendation
 
 router = APIRouter()
+api_router = APIRouter(prefix="/api", dependencies=[Depends(require_backend_api_key)])
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -33,17 +36,17 @@ async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@router.get("/api/hosts", response_model=list[HostRead])
+@api_router.get("/hosts", response_model=list[HostRead])
 async def list_hosts(session: AsyncSession = Depends(get_session)) -> list:
     return await HostRepository(session).list()
 
 
-@router.post("/api/hosts", response_model=HostRead)
+@api_router.post("/hosts", response_model=HostRead)
 async def create_host(payload: HostCreate, session: AsyncSession = Depends(get_session)):
     return await HostRepository(session).create(payload)
 
 
-@router.get("/api/hosts/{host_id}", response_model=HostRead)
+@api_router.get("/hosts/{host_id}", response_model=HostRead)
 async def get_host(host_id: str, session: AsyncSession = Depends(get_session)):
     host = await HostRepository(session).get(host_id)
     if not host:
@@ -51,7 +54,7 @@ async def get_host(host_id: str, session: AsyncSession = Depends(get_session)):
     return host
 
 
-@router.patch("/api/hosts/{host_id}", response_model=HostRead)
+@api_router.patch("/hosts/{host_id}", response_model=HostRead)
 async def update_host(host_id: str, payload: HostUpdate, session: AsyncSession = Depends(get_session)):
     repo = HostRepository(session)
     host = await repo.get(host_id)
@@ -60,7 +63,7 @@ async def update_host(host_id: str, payload: HostUpdate, session: AsyncSession =
     return await repo.update(host, payload)
 
 
-@router.delete("/api/hosts/{host_id}", status_code=204)
+@api_router.delete("/hosts/{host_id}", status_code=204)
 async def delete_host(host_id: str, session: AsyncSession = Depends(get_session)) -> None:
     repo = HostRepository(session)
     host = await repo.get(host_id)
@@ -69,7 +72,7 @@ async def delete_host(host_id: str, session: AsyncSession = Depends(get_session)
     await repo.delete(host)
 
 
-@router.post("/api/hosts/{host_id}/refresh", response_model=HardwareSnapshotRead)
+@api_router.post("/hosts/{host_id}/refresh", response_model=HardwareSnapshotRead)
 async def refresh_host(host_id: str, session: AsyncSession = Depends(get_session)):
     repo = HostRepository(session)
     host = await repo.get(host_id)
@@ -80,7 +83,7 @@ async def refresh_host(host_id: str, session: AsyncSession = Depends(get_session
     return await repo.add_snapshot(host_id, hardware)
 
 
-@router.get("/api/hosts/{host_id}/hardware")
+@api_router.get("/hosts/{host_id}/hardware")
 async def get_hardware(host_id: str, session: AsyncSession = Depends(get_session)):
     host = await HostRepository(session).get(host_id)
     if not host:
@@ -88,7 +91,7 @@ async def get_hardware(host_id: str, session: AsyncSession = Depends(get_session
     return await AgentClient(host.agent_url).get_hardware()
 
 
-@router.get("/api/hosts/{host_id}/models")
+@api_router.get("/hosts/{host_id}/models")
 async def get_models(host_id: str, session: AsyncSession = Depends(get_session)):
     host = await HostRepository(session).get(host_id)
     if not host:
@@ -96,7 +99,7 @@ async def get_models(host_id: str, session: AsyncSession = Depends(get_session))
     return await AgentClient(host.agent_url).get_models()
 
 
-@router.post("/api/benchmark-runs", response_model=BenchmarkRunRead)
+@api_router.post("/benchmark-runs", response_model=BenchmarkRunRead)
 async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSession = Depends(get_session)):
     host = await HostRepository(session).get(payload.host_id)
     if not host:
@@ -104,18 +107,22 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
     repo = BenchmarkRepository(session)
     run = await repo.create_run(payload)
     matrix = [item.model_dump() for item in payload.matrix] if payload.matrix else None
-    agent_run = await AgentClient(host.agent_url).start_benchmark(
-        {"model": payload.model, "mode": payload.mode, "prompt": payload.prompt, "matrix": matrix}
-    )
+    try:
+        agent_run = await AgentClient(host.agent_url).start_benchmark(
+            {"model": payload.model, "mode": payload.mode, "prompt": payload.prompt, "matrix": matrix}
+        )
+    except httpx.HTTPError as exc:
+        await repo.update_run(run, status="failed")
+        raise HTTPException(502, f"Agent failed to start benchmark: {exc}") from exc
     return await repo.update_run(run, status="running", agent_benchmark_id=agent_run["benchmark_id"])
 
 
-@router.get("/api/benchmark-runs", response_model=list[BenchmarkRunRead])
+@api_router.get("/benchmark-runs", response_model=list[BenchmarkRunRead])
 async def list_benchmark_runs(session: AsyncSession = Depends(get_session)):
     return await BenchmarkRepository(session).list_runs()
 
 
-@router.get("/api/benchmark-runs/{run_id}", response_model=BenchmarkRunRead)
+@api_router.get("/benchmark-runs/{run_id}", response_model=BenchmarkRunRead)
 async def get_benchmark_run(run_id: str, session: AsyncSession = Depends(get_session)):
     repo = BenchmarkRepository(session)
     run = await repo.get_run(run_id)
@@ -131,7 +138,7 @@ async def get_benchmark_run(run_id: str, session: AsyncSession = Depends(get_ses
     return run
 
 
-@router.post("/api/benchmark-runs/{run_id}/cancel", response_model=BenchmarkRunRead)
+@api_router.post("/benchmark-runs/{run_id}/cancel", response_model=BenchmarkRunRead)
 async def cancel_benchmark_run(run_id: str, session: AsyncSession = Depends(get_session)):
     repo = BenchmarkRepository(session)
     run = await repo.get_run(run_id)
@@ -143,7 +150,7 @@ async def cancel_benchmark_run(run_id: str, session: AsyncSession = Depends(get_
     return await repo.update_run(run, status="cancelled")
 
 
-@router.get("/api/benchmark-runs/{run_id}/recommendation", response_model=RecommendationRead)
+@api_router.get("/benchmark-runs/{run_id}/recommendation", response_model=RecommendationRead)
 async def get_recommendation(run_id: str, session: AsyncSession = Depends(get_session)):
     repo = BenchmarkRepository(session)
     existing = await repo.get_recommendation(run_id)
@@ -157,7 +164,7 @@ async def get_recommendation(run_id: str, session: AsyncSession = Depends(get_se
     return await repo.save_recommendation(run_id, config, metrics, reason)
 
 
-@router.get("/api/benchmark-runs/{run_id}/export/{kind}", response_model=ExportRead)
+@api_router.get("/benchmark-runs/{run_id}/export/{kind}", response_model=ExportRead)
 async def export_run(kind: str, run_id: str, session: AsyncSession = Depends(get_session)):
     allowed = {"ollama", "modelfile", "llamacpp", "docker-compose", "kubernetes", "helm-values"}
     if kind not in allowed:
@@ -174,3 +181,6 @@ async def export_run(kind: str, run_id: str, session: AsyncSession = Depends(get
     content = render_export(kind, run.model, recommendation.config)
     await repo.save_export(run_id, kind, content)
     return ExportRead(kind=kind, content=content)
+
+
+router.include_router(api_router)

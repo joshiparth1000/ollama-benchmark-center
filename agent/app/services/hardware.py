@@ -1,4 +1,3 @@
-import json
 import platform
 import shutil
 import subprocess
@@ -74,7 +73,3 @@ def resource_sample() -> dict[str, Any]:
         "max_vram_used_mb": max((gpu["vram_used_mb"] for gpu in gpus), default=0),
         "gpu_vram_total_mb": max((gpu["vram_total_mb"] for gpu in gpus), default=0),
     }
-
-
-def hardware_json() -> str:
-    return json.dumps(hardware_snapshot(), indent=2)

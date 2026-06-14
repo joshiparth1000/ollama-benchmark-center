@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +11,8 @@ class Settings(BaseSettings):
         validation_alias="BACKEND_DATABASE_URL",
     )
     backend_api_key: str = Field(default="dev-backend-key", validation_alias="BACKEND_API_KEY")
+    require_api_key: bool = Field(default=False, validation_alias="BACKEND_REQUIRE_API_KEY")
     bench_agent_api_key: str = Field(default="dev-agent-key", validation_alias="BENCH_AGENT_API_KEY")
-    default_agent_url: AnyHttpUrl | str = Field(default="http://agent:9000", validation_alias="DEFAULT_AGENT_URL")
     cors_origins: str = Field(default="http://localhost:3000", validation_alias="CORS_ORIGINS")
 
     model_config = SettingsConfigDict(env_file="../.env", extra="ignore")

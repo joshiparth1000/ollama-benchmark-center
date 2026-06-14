@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const BACKEND_API_KEY = import.meta.env.VITE_BACKEND_API_KEY;
 
 export type Host = {
   id: string;
@@ -32,6 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "content-type": "application/json",
+      ...(BACKEND_API_KEY ? { "x-api-key": BACKEND_API_KEY } : {}),
       ...(init?.headers ?? {})
     }
   });

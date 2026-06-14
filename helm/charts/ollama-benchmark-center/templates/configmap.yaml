@@ -7,3 +7,4 @@ metadata:
 data:
   OLLAMA_BASE_URL: {{ .Values.ollama.baseUrl | quote }}
   CORS_ORIGINS: "http://localhost:3000"
+  BACKEND_REQUIRE_API_KEY: {{ .Values.backend.requireApiKey | quote }}

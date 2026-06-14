@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.core.auth import require_api_key
-from app.services.benchmark import RUNS, start_benchmark
+from app.services.benchmark import RUNS, cancel_benchmark_run, start_benchmark
 from app.services.hardware import hardware_snapshot
 from app.services.ollama import list_models, running_models, version
 
@@ -63,9 +63,7 @@ async def get_benchmark(benchmark_id: str) -> dict:
 
 @app.post("/benchmark/{benchmark_id}/cancel", dependencies=[Depends(require_api_key)])
 async def cancel_benchmark(benchmark_id: str) -> dict:
-    state = RUNS.get(benchmark_id)
+    state = cancel_benchmark_run(benchmark_id)
     if not state:
         raise HTTPException(404, "Benchmark not found")
-    state.cancel_requested = True
-    state.status = "cancelled"
     return {"benchmark_id": benchmark_id, "status": state.status}

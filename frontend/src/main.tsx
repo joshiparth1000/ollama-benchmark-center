@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, BarChart3, Box, Cpu, Download, Play, RefreshCw, Server, Settings } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -133,6 +133,13 @@ function LiveRun({ runId }: { runId: string | null }) {
     mutationFn: api.cancelRun,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["run", runId] })
   });
+  useEffect(() => {
+    if (!run.data || !["completed", "failed", "cancelled"].includes(run.data.status)) {
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["runs"] });
+    queryClient.invalidateQueries({ queryKey: ["recommendation", run.data.id] });
+  }, [queryClient, run.data]);
 
   return (
     <Panel title="Live Run" icon={<Activity size={18} />}>

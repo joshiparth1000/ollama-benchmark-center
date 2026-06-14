@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import HardwareSnapshot, Host
+from app.models.entities import BenchmarkResult, BenchmarkRun, Export, HardwareSnapshot, Host, Recommendation
 from app.schemas.api import HostCreate, HostUpdate
 
 
@@ -34,6 +34,19 @@ class HostRepository:
         return host
 
     async def delete(self, host: Host) -> None:
+        run_ids = list(
+            (
+                await self.session.scalars(
+                    select(BenchmarkRun.id).where(BenchmarkRun.host_id == host.id)
+                )
+            ).all()
+        )
+        if run_ids:
+            await self.session.execute(delete(Export).where(Export.run_id.in_(run_ids)))
+            await self.session.execute(delete(Recommendation).where(Recommendation.run_id.in_(run_ids)))
+            await self.session.execute(delete(BenchmarkResult).where(BenchmarkResult.run_id.in_(run_ids)))
+            await self.session.execute(delete(BenchmarkRun).where(BenchmarkRun.id.in_(run_ids)))
+        await self.session.execute(delete(HardwareSnapshot).where(HardwareSnapshot.host_id == host.id))
         await self.session.delete(host)
         await self.session.commit()
 

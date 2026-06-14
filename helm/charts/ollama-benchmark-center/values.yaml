@@ -16,7 +16,9 @@ backend:
   database:
     url: postgresql+asyncpg://ollama_bench:ollama_bench@postgres:5432/ollama_bench
     urlFromSecret: ""
+    urlSecretKey: BACKEND_DATABASE_URL
   apiKey: dev-backend-key
+  requireApiKey: false
 
 agent:
   image: ollama-benchmark-center/agent

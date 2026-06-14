@@ -23,6 +23,14 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           ports:
             - containerPort: 8000
+          {{- if .Values.backend.database.urlFromSecret }}
+          env:
+            - name: BACKEND_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.database.urlFromSecret }}
+                  key: {{ .Values.backend.database.urlSecretKey }}
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "obc.name" . }}-config

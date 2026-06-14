@@ -24,8 +24,8 @@ services:
     environment:
       BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql+asyncpg://ollama_bench:ollama_bench@postgres:5432/ollama_bench}
       BACKEND_API_KEY: ${BACKEND_API_KEY:-dev-backend-key}
+      BACKEND_REQUIRE_API_KEY: ${BACKEND_REQUIRE_API_KEY:-false}
       BENCH_AGENT_API_KEY: ${BENCH_AGENT_API_KEY:-dev-agent-key}
-      DEFAULT_AGENT_URL: ${DEFAULT_AGENT_URL:-http://agent:9000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     volumes:
       - ./backend:/app
