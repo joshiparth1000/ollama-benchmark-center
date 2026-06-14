@@ -56,3 +56,11 @@ class HostRepository:
         await self.session.commit()
         await self.session.refresh(snapshot)
         return snapshot
+
+    async def latest_snapshot(self, host_id: str) -> HardwareSnapshot | None:
+        stmt = (
+            select(HardwareSnapshot)
+            .where(HardwareSnapshot.host_id == host_id)
+            .order_by(HardwareSnapshot.created_at.desc())
+        )
+        return (await self.session.scalars(stmt)).first()

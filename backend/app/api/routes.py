@@ -20,6 +20,7 @@ from app.schemas.api import (
     RecommendationRead,
 )
 from app.services.agent_client import AgentClient
+from app.services.benchmark_matrix import build_matrix
 from app.services.exports import render_export
 from app.services.recommendations import choose_recommendation
 
@@ -108,7 +109,12 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
         raise HTTPException(404, "Host not found")
     repo = BenchmarkRepository(session)
     run = await repo.create_run(payload)
-    matrix = [item.model_dump() for item in payload.matrix] if payload.matrix else None
+    if payload.matrix:
+        matrix = [item.model_dump() for item in payload.matrix]
+    else:
+        snapshot = await HostRepository(session).latest_snapshot(host.id)
+        gpu_available = bool(((snapshot.payload or {}).get("gpus") if snapshot else []))
+        matrix = build_matrix(payload.mode, gpu_available)
     try:
         agent_run = await AgentClient(host.agent_url).start_benchmark(
             {"model": payload.model, "mode": payload.mode, "prompt": payload.prompt, "matrix": matrix}

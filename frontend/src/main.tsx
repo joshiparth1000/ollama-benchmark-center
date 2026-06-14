@@ -215,6 +215,13 @@ function formatConfigLabel(config: Record<string, number | string>): string {
   return `${scope} · ${thread}t · ${predict} tok`;
 }
 
+function formatChartLabel(config: Record<string, number | string>): string {
+  const gpu = Number(config.num_gpu ?? 0);
+  const predict = Number(config.num_predict ?? 0);
+  const scope = gpu > 0 ? `G${gpu}` : "C";
+  return `${scope}-${predict}`;
+}
+
 function LiveRun({ runId }: { runId: string | null }) {
   const queryClient = useQueryClient();
   const run = useQuery({
@@ -262,6 +269,7 @@ function LiveRun({ runId }: { runId: string | null }) {
 
 function Results({ runs }: { runs: BenchmarkRun[] }) {
   const [runId, setRunId] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const selectedRunId = runId || runs[0]?.id || "";
   const results = useQuery<BenchmarkResult[]>({
     queryKey: ["results", selectedRunId],
@@ -281,8 +289,13 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
   const exportMutation = useMutation({ mutationFn: (kind: string) => api.exportRun(selectedRunId, kind) });
   const chartData = useMemo(
     () =>
-      (results.data ?? []).map((row) => ({
-        name: formatConfigLabel(row.config),
+      (results.data ?? [])
+        .filter((row) => row.status === "completed")
+        .sort((a, b) => Number(b.metrics.gen_tps ?? 0) - Number(a.metrics.gen_tps ?? 0))
+        .slice(0, 6)
+        .map((row) => ({
+        name: formatChartLabel(row.config),
+        label: formatConfigLabel(row.config),
         gen_tps: Number(row.metrics.gen_tps ?? 0),
         prompt_tps: Number(row.metrics.prompt_tps ?? 0),
         ttft_sec: Number(row.metrics.ttft_sec ?? row.metrics.load_sec ?? 0),
@@ -339,16 +352,22 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
       {results.isError ? <div className="error">Could not load benchmark results.</div> : null}
       {chartData.length > 0 ? (
         <div className="space-y-4">
+          <div className="text-xs text-slate-400">
+            Charts show the top {chartData.length} completed configs by generation throughput. Open the details section for the full run.
+          </div>
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded border border-line p-3">
               <div className="mb-3 text-sm font-medium text-slate-300">Throughput</div>
               <div className="h-72">
                 <ResponsiveContainer>
                   <BarChart data={chartData}>
-                    <CartesianGrid stroke="#2a333a" />
-                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
-                    <YAxis stroke="#94a3b8" />
-                    <Tooltip />
+                    <CartesianGrid stroke="#31404a" strokeDasharray="3 3" />
+                    <XAxis dataKey="name" stroke="#cbd5e1" interval={0} angle={-30} textAnchor="end" height={90} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                    <YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "6px", color: "#e2e8f0" }}
+                      labelStyle={{ color: "#e2e8f0" }}
+                    />
                     <Bar dataKey="gen_tps" fill="#40b37c" name="Generation TPS" />
                     <Bar dataKey="prompt_tps" fill="#60a5fa" name="Prompt TPS" />
                   </BarChart>
@@ -360,10 +379,13 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
               <div className="h-72">
                 <ResponsiveContainer>
                   <BarChart data={chartData}>
-                    <CartesianGrid stroke="#2a333a" />
-                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
-                    <YAxis stroke="#94a3b8" />
-                    <Tooltip />
+                    <CartesianGrid stroke="#31404a" strokeDasharray="3 3" />
+                    <XAxis dataKey="name" stroke="#cbd5e1" interval={0} angle={-30} textAnchor="end" height={90} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                    <YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "6px", color: "#e2e8f0" }}
+                      labelStyle={{ color: "#e2e8f0" }}
+                    />
                     <Bar dataKey="ttft_sec" fill="#f59e0b" name="TTFT" />
                     <Bar dataKey="load_sec" fill="#f97316" name="Load" />
                     <Bar dataKey="total_sec" fill="#ef4444" name="Total" />
@@ -376,10 +398,13 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
               <div className="h-72">
                 <ResponsiveContainer>
                   <BarChart data={chartData}>
-                    <CartesianGrid stroke="#2a333a" />
-                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
-                    <YAxis stroke="#94a3b8" />
-                    <Tooltip />
+                    <CartesianGrid stroke="#31404a" strokeDasharray="3 3" />
+                    <XAxis dataKey="name" stroke="#cbd5e1" interval={0} angle={-30} textAnchor="end" height={90} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                    <YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "6px", color: "#e2e8f0" }}
+                      labelStyle={{ color: "#e2e8f0" }}
+                    />
                     <Bar dataKey="vram_mb" fill="#8b5cf6" name="Peak VRAM MB" />
                     <Bar dataKey="cpu_pct" fill="#22c55e" name="CPU %" />
                     <Bar dataKey="ram_pct" fill="#14b8a6" name="RAM %" />
@@ -393,11 +418,13 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
               <p className="text-sm text-slate-300">{recommendation.data?.reason}</p>
             </div>
           </div>
-          <div className="rounded border border-line p-3">
-            <div className="mb-3 text-sm font-medium text-slate-300">Result table</div>
-            <div className="overflow-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-slate-400">
+          <details className="rounded border border-line bg-panel p-3" open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">
+              {detailsOpen ? "Hide detailed results" : "Show detailed results"}
+            </summary>
+            <div className="mt-3 overflow-auto">
+              <table className="benchmark-table w-full text-left text-sm">
+                <thead className="text-slate-300">
                   <tr>
                     <th className="py-2 pr-3">Config</th>
                     <th className="py-2 pr-3">Status</th>
@@ -410,7 +437,7 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
                 </thead>
                 <tbody>
                   {(results.data ?? []).map((row) => (
-                    <tr key={row.id} className="border-t border-line">
+                    <tr key={row.id}>
                       <td className="py-2 pr-3">{formatConfigLabel(row.config)}</td>
                       <td className="py-2 pr-3">{row.status}</td>
                       <td className="py-2 pr-3">{Number(row.metrics.ttft_sec ?? 0).toFixed(2)} s</td>
@@ -423,7 +450,7 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </details>
         </div>
       ) : (
         <div className="empty">Run a benchmark to see TTFT, throughput, latency, and VRAM charts.</div>

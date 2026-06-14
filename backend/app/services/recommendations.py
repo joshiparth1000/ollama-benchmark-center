@@ -38,13 +38,14 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
     def gen_tps(row: RecommendationCandidate) -> float:
         return float(row.metrics.get("gen_tps") or 0)
 
-    def stability_score(row: RecommendationCandidate) -> tuple[float, float, int, float]:
+    def stability_score(row: RecommendationCandidate) -> tuple[int, float, float, int, float]:
         metrics = row.metrics
         config = row.config
+        gpu_priority = 0 if int(config.get("num_gpu") or 0) > 0 else 1
         vram = float(metrics.get("max_vram_used_mb") or 0)
         latency = float(metrics.get("total_sec") or 0)
         num_gpu = int(config.get("num_gpu") or 0)
-        return (vram, latency, num_gpu, -gen_tps(row))
+        return (gpu_priority, vram, latency, -num_gpu, -gen_tps(row))
 
     viable = []
     for row in averaged:
@@ -60,6 +61,6 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
     selected = min(close_to_best, key=stability_score) if len(close_to_best) > 1 else max(pool, key=gen_tps)
     reason = (
         "Selected because it had the best stable generation throughput while staying within "
-        "the VRAM safety limit and preserving lower latency where throughput was close."
+        "the VRAM safety limit and preferring GPU-backed configs when throughput was close."
     )
     return selected.config, selected.metrics, reason

@@ -67,6 +67,31 @@ pre {
   font-size: 0.8rem;
 }
 
+.benchmark-table {
+  border-collapse: collapse;
+}
+
+.benchmark-table thead th {
+  border-bottom: 1px solid #334155;
+}
+
+.benchmark-table tbody td {
+  border-top: 1px solid #22303a;
+  color: #dbeafe;
+}
+
+.benchmark-table tbody tr:nth-child(odd) {
+  background: #0f1720;
+}
+
+.benchmark-table tbody tr:nth-child(even) {
+  background: #111c26;
+}
+
+.benchmark-table tbody tr:hover {
+  background: #162231;
+}
+
 .empty,
 .error {
   border-radius: 0.375rem;
@@ -79,4 +104,8 @@ pre {
   margin-bottom: 1rem;
   border-color: #7f1d1d;
   color: #fecaca;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
 }
