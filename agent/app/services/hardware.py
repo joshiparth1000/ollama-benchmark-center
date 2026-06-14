@@ -1,3 +1,4 @@
+import os
 import platform
 import shutil
 import subprocess
@@ -6,9 +7,19 @@ from typing import Any
 import psutil
 
 
-def _run_allowed(args: list[str], timeout: int = 5) -> str | None:
+NVIDIA_LIBRARY_PATH = "/opt/nvidia/lib/minimal"
+
+
+def _run_allowed(args: list[str], timeout: int = 5, env: dict[str, str] | None = None) -> str | None:
     try:
-        completed = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
+        completed = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env={**os.environ, **(env or {})},
+        )
     except (OSError, subprocess.TimeoutExpired):
         return None
     if completed.returncode != 0:
@@ -24,7 +35,8 @@ def detect_gpus() -> list[dict[str, Any]]:
             "nvidia-smi",
             "--query-gpu=name,memory.total,memory.used,utilization.gpu",
             "--format=csv,noheader,nounits",
-        ]
+        ],
+        env={"LD_LIBRARY_PATH": NVIDIA_LIBRARY_PATH},
     )
     if not output:
         return []

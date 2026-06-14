@@ -13,10 +13,16 @@ ollama:
 
 agent:
   image: ghcr.io/joshiparth1000/ollama-benchmark-center/agent
-  tag: a6da635
+  tag: "5442769"
   pullPolicy: Always
   servicePort: 9000
   apiKey: dev-agent-key
+  gpuAccess:
+    enabled: true
+    privileged: true
+    hostBinPath: /usr/bin
+    hostLibFile: /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+    hostDevPath: /dev
 
 persistence:
   hostPath: /data/ollama

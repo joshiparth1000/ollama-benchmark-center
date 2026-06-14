@@ -6,6 +6,8 @@ metadata:
   labels:
     {{- include "ollama-runtime.labels" . | nindent 4 }}
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   selector:
     matchLabels:
@@ -21,6 +23,21 @@ spec:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       tolerations:
         {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- if .Values.agent.gpuAccess.enabled }}
+      initContainers:
+        - name: nvidia-lib-setup
+          image: "{{ .Values.agent.image }}:{{ .Values.agent.tag }}"
+          imagePullPolicy: {{ .Values.agent.pullPolicy }}
+          command:
+            - sh
+            - -lc
+            - mkdir -p /opt/nvidia/lib/minimal && ln -sf /opt/nvidia/lib/source/libnvidia-ml.so.1 /opt/nvidia/lib/minimal/libnvidia-ml.so.1
+          volumeMounts:
+            - name: nvidia-lib-source
+              mountPath: /opt/nvidia/lib/source/libnvidia-ml.so.1
+            - name: nvidia-lib-minimal
+              mountPath: /opt/nvidia/lib/minimal
+      {{- end }}
       containers:
         - name: ollama
           image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
@@ -44,6 +61,11 @@ spec:
         - name: agent
           image: "{{ .Values.agent.image }}:{{ .Values.agent.tag }}"
           imagePullPolicy: {{ .Values.agent.pullPolicy }}
+          {{- if .Values.agent.gpuAccess.enabled }}
+          securityContext:
+            privileged: {{ .Values.agent.gpuAccess.privileged }}
+            allowPrivilegeEscalation: true
+          {{- end }}
           ports:
             - name: agent
               containerPort: {{ .Values.agent.servicePort }}
@@ -52,6 +74,31 @@ spec:
               value: http://localhost:{{ .Values.ollama.servicePort }}
             - name: BENCH_AGENT_API_KEY
               value: {{ .Values.agent.apiKey | quote }}
+            {{- if .Values.agent.gpuAccess.enabled }}
+            - name: PATH
+              value: /opt/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            - name: LD_LIBRARY_PATH
+              value: /opt/nvidia/lib/minimal
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: utility,compute
+            {{- end }}
+          {{- if .Values.agent.gpuAccess.enabled }}
+          volumeMounts:
+            - name: nvidia-bin
+              mountPath: /opt/nvidia/bin
+            - name: nvidia-lib-minimal
+              mountPath: /opt/nvidia/lib/minimal
+            - name: nvidiactl
+              mountPath: /dev/nvidiactl
+            - name: nvidia0
+              mountPath: /dev/nvidia0
+            - name: nvidia-uvm
+              mountPath: /dev/nvidia-uvm
+            - name: nvidia-uvm-tools
+              mountPath: /dev/nvidia-uvm-tools
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health
@@ -65,3 +112,31 @@ spec:
           hostPath:
             path: {{ .Values.persistence.hostPath }}
             type: DirectoryOrCreate
+        {{- if .Values.agent.gpuAccess.enabled }}
+        - name: nvidia-bin
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostBinPath }}
+            type: Directory
+        - name: nvidia-lib-source
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostLibFile }}
+            type: File
+        - name: nvidia-lib-minimal
+          emptyDir: {}
+        - name: nvidiactl
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostDevPath }}/nvidiactl
+            type: CharDevice
+        - name: nvidia0
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostDevPath }}/nvidia0
+            type: CharDevice
+        - name: nvidia-uvm
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostDevPath }}/nvidia-uvm
+            type: CharDevice
+        - name: nvidia-uvm-tools
+          hostPath:
+            path: {{ .Values.agent.gpuAccess.hostDevPath }}/nvidia-uvm-tools
+            type: CharDevice
+        {{- end }}
