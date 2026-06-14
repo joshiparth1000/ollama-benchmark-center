@@ -25,6 +25,8 @@ spec:
         - name: ollama
           image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
           imagePullPolicy: {{ .Values.ollama.pullPolicy }}
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
           ports:
             - name: ollama
               containerPort: {{ .Values.ollama.servicePort }}

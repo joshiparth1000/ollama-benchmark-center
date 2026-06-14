@@ -62,6 +62,21 @@ class BenchmarkRunRead(BaseModel):
     updated_at: datetime
 
 
+class BenchmarkResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    run_id: str
+    config: dict[str, Any]
+    metrics: dict[str, Any]
+    status: str
+    error: str | None
+    gen_tps: float | None
+    latency_seconds: float | None
+    max_vram_used_mb: float | None
+    created_at: datetime
+
+
 class HardwareSnapshotRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -10,6 +10,7 @@ from app.repositories.hosts import HostRepository
 from app.schemas.api import (
     BenchmarkRunCreate,
     BenchmarkRunRead,
+    BenchmarkResultRead,
     ExportRead,
     HardwareSnapshotRead,
     HealthResponse,
@@ -24,6 +25,7 @@ from app.services.recommendations import choose_recommendation
 
 router = APIRouter()
 api_router = APIRouter(prefix="/api", dependencies=[Depends(require_backend_api_key)])
+TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -128,14 +130,29 @@ async def get_benchmark_run(run_id: str, session: AsyncSession = Depends(get_ses
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
-    if run.agent_benchmark_id and run.status in {"queued", "running"}:
+    if run.agent_benchmark_id and (run.status not in TERMINAL_STATUSES or not await repo.list_results(run.id)):
         host = await HostRepository(session).get(run.host_id)
         if host:
             agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
             run = await repo.update_run(run, status=agent_run.get("status", run.status))
-            if run.status in {"completed", "failed", "cancelled"} and agent_run.get("results"):
+            if agent_run.get("results"):
                 await repo.replace_results(run.id, agent_run["results"])
     return run
+
+
+@api_router.get("/benchmark-runs/{run_id}/results", response_model=list[BenchmarkResultRead])
+async def list_benchmark_results(run_id: str, session: AsyncSession = Depends(get_session)):
+    repo = BenchmarkRepository(session)
+    run = await repo.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Benchmark run not found")
+    if run.agent_benchmark_id and not await repo.list_results(run.id):
+        host = await HostRepository(session).get(run.host_id)
+        if host:
+            agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
+            if agent_run.get("results"):
+                await repo.replace_results(run.id, agent_run["results"])
+    return await repo.list_results(run_id)
 
 
 @api_router.post("/benchmark-runs/{run_id}/cancel", response_model=BenchmarkRunRead)

@@ -22,6 +22,19 @@ export type BenchmarkRun = {
   updated_at: string;
 };
 
+export type BenchmarkResult = {
+  id: string;
+  run_id: string;
+  config: Record<string, number | string>;
+  metrics: Record<string, number | string>;
+  status: string;
+  error: string | null;
+  gen_tps: number | null;
+  latency_seconds: number | null;
+  max_vram_used_mb: number | null;
+  created_at: string;
+};
+
 export type Recommendation = {
   config: Record<string, number | string>;
   metrics: Record<string, number | string>;
@@ -50,6 +63,7 @@ export const api = {
   refreshHost: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/refresh`, { method: "POST" }),
   models: (hostId: string) => request<{ models?: Array<{ name: string }> }>(`/api/hosts/${hostId}/models`),
   runs: () => request<BenchmarkRun[]>("/api/benchmark-runs"),
+  results: (runId: string) => request<BenchmarkResult[]>(`/api/benchmark-runs/${runId}/results`),
   createRun: (payload: { host_id: string; model: string; mode: string; prompt: string }) =>
     request<BenchmarkRun>("/api/benchmark-runs", { method: "POST", body: JSON.stringify(payload) }),
   run: (runId: string) => request<BenchmarkRun>(`/api/benchmark-runs/${runId}`),

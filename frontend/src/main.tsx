@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { api, type BenchmarkRun, type Host } from "./api";
+import { api, type BenchmarkResult, type BenchmarkRun, type Host } from "./api";
 import { useUiStore } from "./store";
 import "./styles.css";
 
@@ -207,6 +207,14 @@ function BenchmarkWizard({ hosts }: { hosts: Host[] }) {
   );
 }
 
+function formatConfigLabel(config: Record<string, number | string>): string {
+  const gpu = Number(config.num_gpu ?? 0);
+  const thread = Number(config.num_thread ?? 0);
+  const predict = Number(config.num_predict ?? 0);
+  const scope = gpu > 0 ? `GPU ${gpu}` : "CPU";
+  return `${scope} · ${thread}t · ${predict} tok`;
+}
+
 function LiveRun({ runId }: { runId: string | null }) {
   const queryClient = useQueryClient();
   const run = useQuery({
@@ -255,21 +263,38 @@ function LiveRun({ runId }: { runId: string | null }) {
 function Results({ runs }: { runs: BenchmarkRun[] }) {
   const [runId, setRunId] = useState("");
   const selectedRunId = runId || runs[0]?.id || "";
+  const results = useQuery<BenchmarkResult[]>({
+    queryKey: ["results", selectedRunId],
+    queryFn: () => api.results(selectedRunId),
+    enabled: Boolean(selectedRunId),
+    refetchInterval: (query) => {
+      const selectedStatus = runs.find((run) => run.id === selectedRunId)?.status;
+      const queryStatus = query.state.data?.some((row) => row.status === "running") ? "running" : selectedStatus;
+      return queryStatus === "running" || queryStatus === "queued" ? 2000 : false;
+    }
+  });
   const recommendation = useQuery({
     queryKey: ["recommendation", selectedRunId],
     queryFn: () => api.recommendation(selectedRunId),
     enabled: Boolean(selectedRunId)
   });
   const exportMutation = useMutation({ mutationFn: (kind: string) => api.exportRun(selectedRunId, kind) });
-  const chartData = useMemo(() => {
-    const metrics = recommendation.data?.metrics ?? {};
-    return [
-      { name: "Generation TPS", value: Number(metrics.gen_tps ?? 0) },
-      { name: "Prompt TPS", value: Number(metrics.prompt_tps ?? 0) },
-      { name: "Latency", value: Number(metrics.total_sec ?? 0) },
-      { name: "VRAM MB", value: Number(metrics.max_vram_used_mb ?? 0) }
-    ];
-  }, [recommendation.data]);
+  const chartData = useMemo(
+    () =>
+      (results.data ?? []).map((row) => ({
+        name: formatConfigLabel(row.config),
+        gen_tps: Number(row.metrics.gen_tps ?? 0),
+        prompt_tps: Number(row.metrics.prompt_tps ?? 0),
+        ttft_sec: Number(row.metrics.ttft_sec ?? row.metrics.load_sec ?? 0),
+        total_sec: Number(row.metrics.total_sec ?? 0),
+        load_sec: Number(row.metrics.load_sec ?? 0),
+        vram_mb: Number(row.metrics.max_vram_used_mb ?? 0),
+        cpu_pct: Number(row.metrics.cpu_usage_percent ?? 0),
+        ram_pct: Number(row.metrics.ram_usage_percent ?? 0)
+      })),
+    [results.data]
+  );
+  const summary = recommendation.data?.metrics ?? {};
 
   return (
     <Panel title="Results" icon={<BarChart3 size={18} />}>
@@ -277,31 +302,132 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
         <select value={selectedRunId} onChange={(event) => setRunId(event.target.value)}>
           {runs.map((run) => <option key={run.id} value={run.id}>{run.model} - {run.status}</option>)}
         </select>
-        <button onClick={() => exportMutation.mutate("ollama")}>
+        <button onClick={() => exportMutation.mutate("ollama")} disabled={!selectedRunId}>
           <Download size={16} /> Export
         </button>
       </div>
-      {recommendation.isError ? <div className="empty">Recommendation appears after successful results are stored.</div> : null}
       {recommendation.data ? (
-        <div className="space-y-4">
+        <div className="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <div className="rounded border border-line p-3">
-            <div className="text-sm text-slate-400">Best config</div>
-            <pre>{JSON.stringify(recommendation.data.config, null, 2)}</pre>
-            <p className="text-sm text-slate-300">{recommendation.data.reason}</p>
+            <div className="text-xs text-slate-400">Best config</div>
+            <div className="mt-1 font-medium">{formatConfigLabel(recommendation.data.config)}</div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer>
-              <BarChart data={chartData}>
-                <CartesianGrid stroke="#2a333a" />
-                <XAxis dataKey="name" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip />
-                <Bar dataKey="value" fill="#40b37c" />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="rounded border border-line p-3">
+            <div className="text-xs text-slate-400">Generation TPS</div>
+            <div className="mt-1 font-medium">{Number(summary.gen_tps ?? 0).toFixed(2)}</div>
+          </div>
+          <div className="rounded border border-line p-3">
+            <div className="text-xs text-slate-400">Prompt TPS</div>
+            <div className="mt-1 font-medium">{Number(summary.prompt_tps ?? 0).toFixed(2)}</div>
+          </div>
+          <div className="rounded border border-line p-3">
+            <div className="text-xs text-slate-400">TTFT</div>
+            <div className="mt-1 font-medium">{Number(summary.ttft_sec ?? 0).toFixed(2)} s</div>
+          </div>
+          <div className="rounded border border-line p-3">
+            <div className="text-xs text-slate-400">Total latency</div>
+            <div className="mt-1 font-medium">{Number(summary.total_sec ?? 0).toFixed(2)} s</div>
+          </div>
+          <div className="rounded border border-line p-3">
+            <div className="text-xs text-slate-400">Peak VRAM</div>
+            <div className="mt-1 font-medium">{Number(summary.max_vram_used_mb ?? 0).toFixed(0)} MB</div>
           </div>
         </div>
       ) : null}
+      {recommendation.isError ? <div className="empty">Recommendation appears after successful results are stored.</div> : null}
+      {results.isLoading ? <div className="empty">Loading benchmark results...</div> : null}
+      {results.isError ? <div className="error">Could not load benchmark results.</div> : null}
+      {chartData.length > 0 ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="rounded border border-line p-3">
+              <div className="mb-3 text-sm font-medium text-slate-300">Throughput</div>
+              <div className="h-72">
+                <ResponsiveContainer>
+                  <BarChart data={chartData}>
+                    <CartesianGrid stroke="#2a333a" />
+                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip />
+                    <Bar dataKey="gen_tps" fill="#40b37c" name="Generation TPS" />
+                    <Bar dataKey="prompt_tps" fill="#60a5fa" name="Prompt TPS" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="mb-3 text-sm font-medium text-slate-300">Latency</div>
+              <div className="h-72">
+                <ResponsiveContainer>
+                  <BarChart data={chartData}>
+                    <CartesianGrid stroke="#2a333a" />
+                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip />
+                    <Bar dataKey="ttft_sec" fill="#f59e0b" name="TTFT" />
+                    <Bar dataKey="load_sec" fill="#f97316" name="Load" />
+                    <Bar dataKey="total_sec" fill="#ef4444" name="Total" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="mb-3 text-sm font-medium text-slate-300">VRAM and system load</div>
+              <div className="h-72">
+                <ResponsiveContainer>
+                  <BarChart data={chartData}>
+                    <CartesianGrid stroke="#2a333a" />
+                    <XAxis dataKey="name" stroke="#94a3b8" interval={0} angle={-15} textAnchor="end" height={80} />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip />
+                    <Bar dataKey="vram_mb" fill="#8b5cf6" name="Peak VRAM MB" />
+                    <Bar dataKey="cpu_pct" fill="#22c55e" name="CPU %" />
+                    <Bar dataKey="ram_pct" fill="#14b8a6" name="RAM %" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="mb-3 text-sm font-medium text-slate-300">Recommendation</div>
+              <pre>{JSON.stringify(recommendation.data?.config ?? {}, null, 2)}</pre>
+              <p className="text-sm text-slate-300">{recommendation.data?.reason}</p>
+            </div>
+          </div>
+          <div className="rounded border border-line p-3">
+            <div className="mb-3 text-sm font-medium text-slate-300">Result table</div>
+            <div className="overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-slate-400">
+                  <tr>
+                    <th className="py-2 pr-3">Config</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">TTFT</th>
+                    <th className="py-2 pr-3">Gen TPS</th>
+                    <th className="py-2 pr-3">Prompt TPS</th>
+                    <th className="py-2 pr-3">Latency</th>
+                    <th className="py-2 pr-3">VRAM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(results.data ?? []).map((row) => (
+                    <tr key={row.id} className="border-t border-line">
+                      <td className="py-2 pr-3">{formatConfigLabel(row.config)}</td>
+                      <td className="py-2 pr-3">{row.status}</td>
+                      <td className="py-2 pr-3">{Number(row.metrics.ttft_sec ?? 0).toFixed(2)} s</td>
+                      <td className="py-2 pr-3">{Number(row.metrics.gen_tps ?? 0).toFixed(2)}</td>
+                      <td className="py-2 pr-3">{Number(row.metrics.prompt_tps ?? 0).toFixed(2)}</td>
+                      <td className="py-2 pr-3">{Number(row.metrics.total_sec ?? 0).toFixed(2)} s</td>
+                      <td className="py-2 pr-3">{Number(row.metrics.max_vram_used_mb ?? 0).toFixed(0)} MB</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="empty">Run a benchmark to see TTFT, throughput, latency, and VRAM charts.</div>
+      )}
       {exportMutation.data ? <pre className="mt-3 max-h-64 overflow-auto">{exportMutation.data.content}</pre> : null}
     </Panel>
   );

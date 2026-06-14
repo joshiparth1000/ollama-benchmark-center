@@ -7,6 +7,9 @@ ollama:
   tag: 0.30.8
   pullPolicy: Always
   servicePort: 11434
+  resources:
+    limits:
+      nvidia.com/gpu: 1
 
 agent:
   image: ghcr.io/joshiparth1000/ollama-benchmark-center/agent

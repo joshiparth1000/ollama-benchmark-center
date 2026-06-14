@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Any
 
 from app.services.hardware import resource_sample
+from app.services.hardware import detect_gpus
 from app.services.ollama import generate
 
 
@@ -25,16 +26,25 @@ RUNS: dict[str, BenchmarkState] = {}
 
 
 def default_matrix(mode: str) -> list[dict[str, Any]]:
-    base = {"num_gpu": 0, "num_thread": 4, "num_ctx": 4096, "num_batch": 512, "temperature": 0.2}
+    base = {"num_thread": 4, "num_ctx": 4096, "num_batch": 512, "temperature": 0.2}
+    cpu = base | {"num_gpu": 0}
+    gpu = base | {"num_gpu": 1}
+    gpu_variants = [gpu]
+    if detect_gpus():
+        gpu_variants = [
+            gpu | {"num_predict": 128},
+            gpu | {"num_thread": 8, "num_predict": 128},
+            gpu | {"num_thread": 8, "num_batch": 1024, "num_predict": 256},
+        ]
     if mode == "balanced":
-        return [base | {"num_predict": 256}, base | {"num_thread": 8, "num_predict": 256}]
+        return [cpu | {"num_predict": 256}, *gpu_variants[:2]]
     if mode == "exhaustive":
         return [
-            base | {"num_predict": 512},
-            base | {"num_thread": 8, "num_predict": 512},
-            base | {"num_thread": 12, "num_batch": 1024, "num_predict": 512},
+            cpu | {"num_predict": 512},
+            cpu | {"num_thread": 8, "num_predict": 512},
+            *gpu_variants,
         ]
-    return [base | {"num_predict": 128}]
+    return [cpu | {"num_predict": 128}, *gpu_variants[:1]]
 
 
 def compute_metrics(response: dict[str, Any], sample: dict[str, Any], started: float) -> dict[str, Any]:
@@ -44,11 +54,14 @@ def compute_metrics(response: dict[str, Any], sample: dict[str, Any], started: f
     eval_count = response.get("eval_count") or 0
     eval_duration = response.get("eval_duration") or 0
     total_sec = total_duration / 1_000_000_000 if total_duration else perf_counter() - started
+    load_sec = (response.get("load_duration") or 0) / 1_000_000_000
     prompt_sec = prompt_eval_duration / 1_000_000_000 if prompt_eval_duration else 0
     eval_sec = eval_duration / 1_000_000_000 if eval_duration else 0
     return {
         "total_sec": total_sec,
-        "load_sec": (response.get("load_duration") or 0) / 1_000_000_000,
+        "load_sec": load_sec,
+        "prompt_eval_sec": prompt_sec,
+        "ttft_sec": load_sec + prompt_sec if (load_sec or prompt_sec) else total_sec,
         "prompt_tps": prompt_eval_count / prompt_sec if prompt_sec else 0,
         "gen_tps": eval_count / eval_sec if eval_sec else 0,
         "output_tokens": eval_count,
