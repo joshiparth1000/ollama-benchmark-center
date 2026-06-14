@@ -30,6 +30,8 @@ jobs:
               - 'agent/**'
 
   backend-test:
+    if: needs.changes.outputs.backend == 'true'
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +42,8 @@ jobs:
       - run: cd backend && ruff check app tests && pytest
 
   agent-test:
+    if: needs.changes.outputs.agent == 'true'
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +54,8 @@ jobs:
       - run: cd agent && ruff check app tests && pytest
 
   frontend-test:
+    if: needs.changes.outputs.frontend == 'true'
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
