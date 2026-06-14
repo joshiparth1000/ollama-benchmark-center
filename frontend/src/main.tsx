@@ -9,6 +9,33 @@ import { useUiStore } from "./store";
 import "./styles.css";
 
 const queryClient = new QueryClient();
+const promptTemplates = [
+  {
+    id: "coding_challenge",
+    label: "Coding challenge",
+    prompt: "Write a Python function that parses a CSV file and returns the top 10 rows sorted by a numeric column. Include edge-case handling."
+  },
+  {
+    id: "simple_question",
+    label: "Simple question",
+    prompt: "What is the difference between throughput and latency in model benchmarking?"
+  },
+  {
+    id: "summarization",
+    label: "Summarization",
+    prompt: "Summarize the following request in three bullet points: benchmark the model, capture resource usage, and recommend the best configuration."
+  },
+  {
+    id: "reasoning",
+    label: "Reasoning",
+    prompt: "A model is faster but uses more VRAM than another. Explain when each trade-off would be preferable."
+  },
+  {
+    id: "custom",
+    label: "Custom prompt",
+    prompt: ""
+  }
+] as const;
 
 function StatusBadge({ status }: { status: string }) {
   const tone = status === "online" || status === "completed" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn";
@@ -75,15 +102,31 @@ function BenchmarkWizard({ hosts }: { hosts: Host[] }) {
   const queryClient = useQueryClient();
   const { setActiveRunId } = useUiStore();
   const [hostId, setHostId] = useState("");
-  const [model, setModel] = useState("llama3.2:3b");
+  const [model, setModel] = useState("");
   const [mode, setMode] = useState("quick");
-  const [prompt, setPrompt] = useState("Explain why benchmark measurements should include latency and throughput.");
+  const [promptTemplate, setPromptTemplate] = useState<(typeof promptTemplates)[number]["id"]>("simple_question");
+  const [customPrompt, setCustomPrompt] = useState("");
   const selectedHostId = hostId || hosts[0]?.id || "";
   const models = useQuery({
     queryKey: ["models", selectedHostId],
     queryFn: () => api.models(selectedHostId),
     enabled: Boolean(selectedHostId)
   });
+  const modelOptions = models.data?.models ?? [];
+  useEffect(() => {
+    setModel("");
+  }, [selectedHostId]);
+  useEffect(() => {
+    if (modelOptions.length === 0) {
+      return;
+    }
+    if (!model || !modelOptions.some((item) => item.name === model)) {
+      setModel(modelOptions[0].name);
+    }
+  }, [model, modelOptions]);
+  const activePrompt = promptTemplate === "custom"
+    ? customPrompt
+    : promptTemplates.find((item) => item.id === promptTemplate)?.prompt ?? "";
   const createRun = useMutation({
     mutationFn: api.createRun,
     onSuccess: (run) => {
@@ -100,17 +143,63 @@ function BenchmarkWizard({ hosts }: { hosts: Host[] }) {
             <option key={host.id} value={host.id}>{host.name}</option>
           ))}
         </select>
-        <input list="models" value={model} onChange={(event) => setModel(event.target.value)} />
-        <datalist id="models">
-          {(models.data?.models ?? []).map((item) => <option key={item.name} value={item.name} />)}
-        </datalist>
+        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <select
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            disabled={!selectedHostId || models.isLoading || modelOptions.length === 0}
+          >
+            {!selectedHostId ? <option value="">Select a host first</option> : null}
+            {models.isLoading ? <option value="">Loading models...</option> : null}
+            {models.isError ? <option value="">Unable to load models</option> : null}
+            {!models.isLoading && !models.isError && modelOptions.length === 0 ? <option value="">No models available</option> : null}
+            {modelOptions.map((item) => (
+              <option key={item.name} value={item.name}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => models.refetch()}
+            disabled={!selectedHostId || models.isFetching}
+            aria-label="Refresh models"
+            title="Refresh models"
+          >
+            <RefreshCw size={16} className={models.isFetching ? "animate-spin" : ""} />
+          </button>
+        </div>
+        {models.isError ? <div className="text-xs text-red-300">Refresh the list or check the selected host.</div> : null}
         <select value={mode} onChange={(event) => setMode(event.target.value)}>
           <option value="quick">Quick</option>
           <option value="balanced">Balanced</option>
           <option value="exhaustive">Exhaustive</option>
         </select>
-        <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-        <button disabled={!selectedHostId} onClick={() => createRun.mutate({ host_id: selectedHostId, model, mode, prompt })}>
+        <select
+          value={promptTemplate}
+          onChange={(event) => setPromptTemplate(event.target.value as (typeof promptTemplates)[number]["id"])}
+        >
+          {promptTemplates.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        {promptTemplate === "custom" ? (
+          <textarea
+            value={customPrompt}
+            onChange={(event) => setCustomPrompt(event.target.value)}
+            placeholder="Write your own benchmark prompt."
+          />
+        ) : (
+          <div className="rounded border border-line bg-slate-950/40 p-3 text-sm text-slate-300">
+            {activePrompt}
+          </div>
+        )}
+        <button
+          disabled={!selectedHostId || !model || models.isLoading || models.isError || !activePrompt.trim()}
+          onClick={() => createRun.mutate({ host_id: selectedHostId, model, mode, prompt: activePrompt })}
+        >
           <Play size={16} /> Start
         </button>
       </div>
