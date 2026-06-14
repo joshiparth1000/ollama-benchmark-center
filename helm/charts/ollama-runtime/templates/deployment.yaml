@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-runtime
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "ollama-runtime.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ollama-runtime.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ollama-runtime.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
+          imagePullPolicy: {{ .Values.ollama.pullPolicy }}
+          ports:
+            - name: ollama
+              containerPort: {{ .Values.ollama.servicePort }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+          readinessProbe:
+            httpGet:
+              path: /api/version
+              port: {{ .Values.ollama.servicePort }}
+          livenessProbe:
+            httpGet:
+              path: /api/version
+              port: {{ .Values.ollama.servicePort }}
+        - name: agent
+          image: "{{ .Values.agent.image }}:{{ .Values.agent.tag }}"
+          imagePullPolicy: {{ .Values.agent.pullPolicy }}
+          ports:
+            - name: agent
+              containerPort: {{ .Values.agent.servicePort }}
+          env:
+            - name: OLLAMA_BASE_URL
+              value: http://localhost:{{ .Values.ollama.servicePort }}
+            - name: BENCH_AGENT_API_KEY
+              value: {{ .Values.agent.apiKey | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.agent.servicePort }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.agent.servicePort }}
+      volumes:
+        - name: ollama-data
+          hostPath:
+            path: {{ .Values.persistence.hostPath }}
+            type: DirectoryOrCreate

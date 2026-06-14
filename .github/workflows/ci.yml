@@ -91,7 +91,6 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/frontend:${{ steps.meta.outputs.short_sha }}
-            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/frontend:master
 
   docker-build-backend:
     needs:
@@ -120,7 +119,6 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/backend:${{ steps.meta.outputs.short_sha }}
-            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/backend:master
 
   docker-build-agent:
     needs:
@@ -149,7 +147,6 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/agent:${{ steps.meta.outputs.short_sha }}
-            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/agent:master
 
   helm:
     runs-on: ubuntu-latest
