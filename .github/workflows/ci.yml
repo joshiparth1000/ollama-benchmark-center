@@ -72,9 +72,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Normalize image owner
-        id: image
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Image metadata
+        id: meta
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Login to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: docker/login-action@v3
@@ -88,8 +90,8 @@ jobs:
           context: ./frontend
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/frontend:${{ github.sha }}
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/frontend:master
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/frontend:${{ steps.meta.outputs.short_sha }}
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/frontend:master
 
   docker-build-backend:
     needs:
@@ -99,9 +101,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Normalize image owner
-        id: image
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Image metadata
+        id: meta
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Login to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: docker/login-action@v3
@@ -115,8 +119,8 @@ jobs:
           context: ./backend
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/backend:${{ github.sha }}
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/backend:master
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/backend:${{ steps.meta.outputs.short_sha }}
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/backend:master
 
   docker-build-agent:
     needs:
@@ -126,9 +130,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Normalize image owner
-        id: image
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Image metadata
+        id: meta
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Login to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: docker/login-action@v3
@@ -142,8 +148,8 @@ jobs:
           context: ./agent
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/agent:${{ github.sha }}
-            ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/agent:master
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/agent:${{ steps.meta.outputs.short_sha }}
+            ghcr.io/${{ steps.meta.outputs.owner }}/ollama-benchmark-center/agent:master
 
   helm:
     runs-on: ubuntu-latest
