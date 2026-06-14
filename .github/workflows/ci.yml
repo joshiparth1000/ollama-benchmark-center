@@ -59,7 +59,11 @@ jobs:
       - run: cd frontend && npm install && npm run lint && npm run build && npm test
 
   docker-build-frontend:
-    needs: changes
+    needs:
+      - changes
+      - backend-test
+      - agent-test
+      - frontend-test
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +88,11 @@ jobs:
             ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/frontend:master
 
   docker-build-backend:
-    needs: changes
+    needs:
+      - changes
+      - backend-test
+      - agent-test
+      - frontend-test
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -109,7 +117,11 @@ jobs:
             ghcr.io/${{ steps.image.outputs.owner }}/ollama-benchmark-center/backend:master
 
   docker-build-agent:
-    needs: changes
+    needs:
+      - changes
+      - backend-test
+      - agent-test
+      - frontend-test
     if: needs.changes.outputs.agent == 'true'
     runs-on: ubuntu-latest
     steps:
