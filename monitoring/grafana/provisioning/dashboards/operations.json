@@ -1,0 +1,17 @@
+{
+  "title": "Ollama Benchmark Center Operations",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Backend HTTP latency",
+      "targets": [{"expr": "backend_http_request_duration_seconds"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent CPU usage",
+      "targets": [{"expr": "agent_cpu_usage_percent"}]
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+replicaCount: 1
+
+imagePullPolicy: IfNotPresent
+
+frontend:
+  image: ollama-benchmark-center/frontend
+  tag: latest
+  service:
+    port: 80
+
+backend:
+  image: ollama-benchmark-center/backend
+  tag: latest
+  service:
+    port: 8000
+  database:
+    url: postgresql+asyncpg://ollama_bench:ollama_bench@postgres:5432/ollama_bench
+    urlFromSecret: ""
+  apiKey: dev-backend-key
+
+agent:
+  image: ollama-benchmark-center/agent
+  tag: latest
+  service:
+    port: 9000
+  apiKey: dev-agent-key
+  gpu:
+    enabled: false
+    count: 1
+  runtimeClassName: ""
+  resources: {}
+
+ollama:
+  baseUrl: http://ollama:11434
+  model: llama3.2:3b
+
+ingress:
+  enabled: false
+  className: nginx
+  hosts:
+    - host: benchmark.example.com
+      paths:
+        - path: /
+          service: frontend
+        - path: /api
+          service: backend
+  tls: []
+
+networkPolicy:
+  enabled: true
+
+serviceMonitor:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

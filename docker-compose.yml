@@ -1,0 +1,99 @@
+services:
+  frontend:
+    image: ollama-benchmark-center/frontend:dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+  backend:
+    image: ollama-benchmark-center/backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql+asyncpg://ollama_bench:ollama_bench@postgres:5432/ollama_bench}
+      BACKEND_API_KEY: ${BACKEND_API_KEY:-dev-backend-key}
+      BENCH_AGENT_API_KEY: ${BENCH_AGENT_API_KEY:-dev-agent-key}
+      DEFAULT_AGENT_URL: ${DEFAULT_AGENT_URL:-http://agent:9000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ./backend:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      agent:
+        condition: service_started
+
+  agent:
+    image: ollama-benchmark-center/agent:dev
+    build:
+      context: ./agent
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${AGENT_PORT:-9000}:9000"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      BENCH_AGENT_API_KEY: ${BENCH_AGENT_API_KEY:-dev-agent-key}
+    volumes:
+      - ./agent:/app
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ollama_bench}
+      POSTGRES_USER: ${POSTGRES_USER:-ollama_bench}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ollama_bench}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ollama_bench} -d ${POSTGRES_DB:-ollama_bench}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles: ["observability"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    profiles: ["observability"]
+
+volumes:
+  frontend_node_modules:
+  ollama:
+  postgres:

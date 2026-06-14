@@ -1,0 +1,8 @@
+frontend:
+  tag: dev
+backend:
+  tag: dev
+agent:
+  tag: dev
+ingress:
+  enabled: false

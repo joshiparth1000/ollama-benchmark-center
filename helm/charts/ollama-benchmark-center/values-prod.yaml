@@ -1,0 +1,13 @@
+backend:
+  database:
+    url: ""
+    urlFromSecret: benchmark-db-secret
+  apiKey: change-me
+agent:
+  apiKey: change-me
+ingress:
+  enabled: true
+  tls:
+    - secretName: benchmark-tls
+      hosts:
+        - benchmark.example.com

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "obc.name" . }}-agent
+  labels:
+    {{- include "obc.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "obc.name" . }}
+      {{- if .Values.agent.runtimeClassName }}
+      runtimeClassName: {{ .Values.agent.runtimeClassName }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: "{{ .Values.agent.image }}:{{ .Values.agent.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - containerPort: 9000
+          envFrom:
+            - configMapRef:
+                name: {{ include "obc.name" . }}-config
+            - secretRef:
+                name: {{ include "obc.name" . }}-secret
+          {{- if .Values.agent.gpu.enabled }}
+          resources:
+            limits:
+              nvidia.com/gpu: {{ .Values.agent.gpu.count }}
+          {{- else }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000

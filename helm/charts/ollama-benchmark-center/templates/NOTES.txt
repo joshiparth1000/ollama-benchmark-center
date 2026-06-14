@@ -1,0 +1,10 @@
+Ollama Benchmark Center has been installed.
+
+Frontend service:
+  {{ include "obc.name" . }}-frontend
+
+Backend health:
+  /health
+
+Agent health:
+  /health

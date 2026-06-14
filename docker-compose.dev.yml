@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build:
+      dockerfile: Dockerfile.dev
+    command: npm run dev
+
+  backend:
+    build:
+      dockerfile: Dockerfile.dev
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  agent:
+    build:
+      dockerfile: Dockerfile.dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 9000 --reload
