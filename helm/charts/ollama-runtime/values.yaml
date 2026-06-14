@@ -13,7 +13,7 @@ ollama:
 
 agent:
   image: ghcr.io/joshiparth1000/ollama-benchmark-center/agent
-  tag: "cb34ecf"
+  tag: "35d506a"
   pullPolicy: Always
   servicePort: 9000
   apiKey: dev-agent-key

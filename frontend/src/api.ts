@@ -60,6 +60,9 @@ export const api = {
   hosts: () => request<Host[]>("/api/hosts"),
   createHost: (payload: { name: string; agent_url: string }) =>
     request<Host>("/api/hosts", { method: "POST", body: JSON.stringify(payload) }),
+  updateHost: (hostId: string, payload: { name?: string; agent_url?: string }) =>
+    request<Host>(`/api/hosts/${hostId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteHost: (hostId: string) => request<void>(`/api/hosts/${hostId}`, { method: "DELETE" }),
   refreshHost: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/refresh`, { method: "POST" }),
   hardware: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/hardware`),
   models: (hostId: string) => request<{ models?: Array<{ name: string }> }>(`/api/hosts/${hostId}/models`),

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Box, ChevronDown, Cpu, Download, Play, RefreshCw, Server, Settings } from "lucide-react";
+import { Activity, BarChart3, Box, Check, ChevronDown, Cpu, Download, Pencil, Play, RefreshCw, Server, Settings, Trash2, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -59,9 +59,27 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
   const [name, setName] = useState("Local agent");
   const [agentUrl, setAgentUrl] = useState("http://localhost:9000");
   const [expandedHostId, setExpandedHostId] = useState<string | null>(null);
+  const [editingHostId, setEditingHostId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingAgentUrl, setEditingAgentUrl] = useState("");
   const createHost = useMutation({
     mutationFn: api.createHost,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hosts"] })
+  });
+  const updateHost = useMutation({
+    mutationFn: ({ hostId, payload }: { hostId: string; payload: { name?: string; agent_url?: string } }) =>
+      api.updateHost(hostId, payload),
+    onSuccess: () => {
+      setEditingHostId(null);
+      queryClient.invalidateQueries({ queryKey: ["hosts"] });
+    }
+  });
+  const deleteHost = useMutation({
+    mutationFn: api.deleteHost,
+    onSuccess: () => {
+      setExpandedHostId(null);
+      queryClient.invalidateQueries({ queryKey: ["hosts"] });
+    }
   });
   const refreshHost = useMutation({
     mutationFn: api.refreshHost,
@@ -72,6 +90,19 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
     queryFn: () => api.hardware(expandedHostId ?? ""),
     enabled: Boolean(expandedHostId)
   });
+
+  useEffect(() => {
+    if (!editingHostId) {
+      return;
+    }
+    const host = hosts.find((item) => item.id === editingHostId);
+    if (!host) {
+      setEditingHostId(null);
+      return;
+    }
+    setEditingName(host.name);
+    setEditingAgentUrl(host.agent_url);
+  }, [editingHostId, hosts]);
 
   return (
     <Panel title="Hosts" icon={<Server size={18} />}>
@@ -107,7 +138,53 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
                 <button onClick={() => refreshHost.mutate(host.id)}>
                   <RefreshCw size={16} /> Refresh
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingHostId(host.id);
+                    setEditingName(host.name);
+                    setEditingAgentUrl(host.agent_url);
+                  }}
+                >
+                  <Pencil size={16} /> Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Remove ${host.name}?`)) {
+                      deleteHost.mutate(host.id);
+                    }
+                  }}
+                >
+                  <Trash2 size={16} /> Remove
+                  </button>
               </div>
+              {editingHostId === host.id ? (
+                <div className="mt-3 grid gap-2 rounded border border-line bg-slate-950/40 p-3 md:grid-cols-[1fr_1.4fr_auto_auto]">
+                  <input value={editingName} onChange={(event) => setEditingName(event.target.value)} />
+                  <input value={editingAgentUrl} onChange={(event) => setEditingAgentUrl(event.target.value)} />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateHost.mutate({
+                        hostId: host.id,
+                        payload: { name: editingName, agent_url: editingAgentUrl }
+                      })
+                    }
+                    disabled={!editingName.trim() || !editingAgentUrl.trim()}
+                  >
+                    <Check size={16} /> Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingHostId(null);
+                    }}
+                  >
+                    <X size={16} /> Cancel
+                  </button>
+                </div>
+              ) : null}
               {expandedHostId === host.id ? (
                 <div className="mt-3 rounded border border-line bg-slate-950/40 p-3">
                   {expandedHardware.isLoading ? <div className="empty">Loading hardware details...</div> : null}

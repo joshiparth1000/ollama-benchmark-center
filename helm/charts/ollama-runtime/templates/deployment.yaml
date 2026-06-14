@@ -31,7 +31,7 @@ spec:
           command:
             - sh
             - -lc
-            - mkdir -p /opt/nvidia/lib/minimal && ln -sf /opt/nvidia/lib/source/libnvidia-ml.so.1 /opt/nvidia/lib/minimal/libnvidia-ml.so.1
+            - mkdir -p /opt/nvidia/lib/minimal && cp -f /opt/nvidia/lib/source/libnvidia-ml.so.1 /opt/nvidia/lib/minimal/libnvidia-ml.so.1
           volumeMounts:
             - name: nvidia-lib-source
               mountPath: /opt/nvidia/lib/source/libnvidia-ml.so.1
