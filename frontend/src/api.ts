@@ -61,6 +61,7 @@ export const api = {
   createHost: (payload: { name: string; agent_url: string }) =>
     request<Host>("/api/hosts", { method: "POST", body: JSON.stringify(payload) }),
   refreshHost: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/refresh`, { method: "POST" }),
+  hardware: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/hardware`),
   models: (hostId: string) => request<{ models?: Array<{ name: string }> }>(`/api/hosts/${hostId}/models`),
   runs: () => request<BenchmarkRun[]>("/api/benchmark-runs"),
   results: (runId: string) => request<BenchmarkResult[]>(`/api/benchmark-runs/${runId}/results`),

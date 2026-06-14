@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Box, Cpu, Download, Play, RefreshCw, Server, Settings } from "lucide-react";
+import { Activity, BarChart3, Box, ChevronDown, Cpu, Download, Play, RefreshCw, Server, Settings } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -58,6 +58,7 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("Local agent");
   const [agentUrl, setAgentUrl] = useState("http://localhost:9000");
+  const [expandedHostId, setExpandedHostId] = useState<string | null>(null);
   const createHost = useMutation({
     mutationFn: api.createHost,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hosts"] })
@@ -65,6 +66,11 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
   const refreshHost = useMutation({
     mutationFn: api.refreshHost,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["hosts"] })
+  });
+  const expandedHardware = useQuery({
+    queryKey: ["host-hardware", expandedHostId],
+    queryFn: () => api.hardware(expandedHostId ?? ""),
+    enabled: Boolean(expandedHostId)
   });
 
   return (
@@ -81,15 +87,76 @@ function HostsDashboard({ hosts }: { hosts: Host[] }) {
           <div className="empty">No hosts registered yet.</div>
         ) : (
           hosts.map((host) => (
-            <div key={host.id} className="grid gap-3 rounded border border-line p-3 md:grid-cols-[1fr_auto_auto]">
-              <div>
-                <div className="font-medium">{host.name}</div>
-                <div className="text-xs text-slate-400">{host.agent_url}</div>
-              </div>
-              <StatusBadge status={host.status} />
-              <button onClick={() => refreshHost.mutate(host.id)}>
-                <RefreshCw size={16} /> Refresh
+            <div key={host.id} className="rounded border border-line p-3">
+              <button
+                type="button"
+                className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 bg-transparent p-0 text-left"
+                onClick={() => setExpandedHostId(expandedHostId === host.id ? null : host.id)}
+              >
+                <div>
+                  <div className="font-medium">{host.name}</div>
+                  <div className="text-xs text-slate-400">{host.agent_url}</div>
+                </div>
+                <StatusBadge status={host.status} />
+                <ChevronDown
+                  size={16}
+                  className={`transition-transform ${expandedHostId === host.id ? "rotate-180" : ""}`}
+                />
               </button>
+              <div className="mt-3 flex items-center gap-2">
+                <button onClick={() => refreshHost.mutate(host.id)}>
+                  <RefreshCw size={16} /> Refresh
+                </button>
+              </div>
+              {expandedHostId === host.id ? (
+                <div className="mt-3 rounded border border-line bg-slate-950/40 p-3">
+                  {expandedHardware.isLoading ? <div className="empty">Loading hardware details...</div> : null}
+                  {expandedHardware.isError ? <div className="error">Could not load hardware details.</div> : null}
+                  {expandedHardware.data ? (
+                    <div className="grid gap-3">
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <div className="rounded border border-line p-3">
+                          <div className="text-xs text-slate-400">CPU</div>
+                          <div className="mt-1 text-sm text-slate-200">
+                            {(expandedHardware.data.cpu as { logical_count?: number; physical_count?: number } | undefined)?.logical_count ?? "n/a"} logical /{" "}
+                            {(expandedHardware.data.cpu as { logical_count?: number; physical_count?: number } | undefined)?.physical_count ?? "n/a"} physical
+                          </div>
+                        </div>
+                        <div className="rounded border border-line p-3">
+                          <div className="text-xs text-slate-400">RAM</div>
+                          <div className="mt-1 text-sm text-slate-200">
+                            {Number(((expandedHardware.data.ram as { total_bytes?: number } | undefined)?.total_bytes ?? 0) / (1024 ** 3)).toFixed(1)} GB total
+                          </div>
+                        </div>
+                        <div className="rounded border border-line p-3">
+                          <div className="text-xs text-slate-400">GPU</div>
+                          <div className="mt-1 text-sm text-slate-200">
+                            {Array.isArray(expandedHardware.data.gpus) && expandedHardware.data.gpus.length > 0
+                              ? `${expandedHardware.data.gpus.length} detected`
+                              : "No GPU detected"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div className="rounded border border-line p-3">
+                          <div className="text-xs text-slate-400">Platform</div>
+                          <div className="mt-1 text-sm text-slate-200">{String(expandedHardware.data.platform ?? "n/a")}</div>
+                        </div>
+                        <div className="rounded border border-line p-3">
+                          <div className="text-xs text-slate-400">Hostname</div>
+                          <div className="mt-1 text-sm text-slate-200">{String(expandedHardware.data.hostname ?? "n/a")}</div>
+                        </div>
+                      </div>
+                      <details className="rounded border border-line bg-panel p-3">
+                        <summary className="cursor-pointer list-none text-sm font-medium text-slate-200">
+                          Show raw discovered hardware
+                        </summary>
+                        <pre className="mt-3">{JSON.stringify(expandedHardware.data, null, 2)}</pre>
+                      </details>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ))
         )}
