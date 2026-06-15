@@ -99,14 +99,14 @@ function formatConfigLabel(config: Record<string, number | string> | null | unde
   const gpu = Number(config.num_gpu ?? 0);
   const thread = Number(config.num_thread ?? 0);
   const predict = Number(config.num_predict ?? 0);
-  const scope = gpu > 0 ? `GPU ${gpu}` : "CPU";
+  const scope = gpu !== 0 ? (gpu < 0 ? "GPU full" : `GPU ${gpu}`) : "CPU";
   return `${scope} - ${thread}t - ${predict} tok`;
 }
 
 function formatChartLabel(config: Record<string, number | string>): string {
   const gpu = Number(config.num_gpu ?? 0);
   const predict = Number(config.num_predict ?? 0);
-  const scope = gpu > 0 ? `G${gpu}` : "C";
+  const scope = gpu !== 0 ? (gpu < 0 ? "G-full" : `G${gpu}`) : "C";
   return `${scope}-${predict}`;
 }
 

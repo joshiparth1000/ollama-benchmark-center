@@ -5,6 +5,9 @@ from typing import Any
 from app.models.entities import BenchmarkResult
 
 
+RECOMMENDATION_VERSION = 2
+
+
 @dataclass
 class RecommendationCandidate:
     config: dict[str, Any]
@@ -23,13 +26,14 @@ def _tier_from_candidate(candidate: RecommendationCandidate) -> str:
     config = candidate.config
     metrics = candidate.metrics
     num_gpu = int(config.get("num_gpu") or 0)
+    gpu_backed = num_gpu != 0
     gpu_vram_total_mb = float(metrics.get("gpu_vram_total_mb") or 0)
     max_vram_used_mb = float(metrics.get("max_vram_used_mb") or 0)
     gen_tps = float(metrics.get("gen_tps") or 0)
     num_predict = int(config.get("num_predict") or 0)
     num_batch = int(config.get("num_batch") or 0)
 
-    if num_gpu <= 0 or gpu_vram_total_mb <= 0:
+    if not gpu_backed or gpu_vram_total_mb <= 0:
         return "light"
     if gen_tps >= 20 or num_predict >= 256 or num_batch >= 1024 or max_vram_used_mb >= gpu_vram_total_mb * 0.55:
         return "strong"
@@ -140,6 +144,7 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
     candidates = [r for r in results if r.status == "completed" and r.gen_tps is not None]
     if not candidates:
         raise ValueError("No successful benchmark results are available.")
+    gpu_was_visible = any(float((row.metrics or {}).get("gpu_vram_total_mb") or 0) > 0 for row in results)
 
     grouped: dict[str, list[BenchmarkResult]] = {}
     for row in candidates:
@@ -164,10 +169,13 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
     def gen_tps(row: RecommendationCandidate) -> float:
         return float(row.metrics.get("gen_tps") or 0)
 
+    def gpu_backed(row: RecommendationCandidate) -> bool:
+        return int(row.config.get("num_gpu") or 0) != 0
+
     def stability_score(row: RecommendationCandidate) -> tuple[int, float, float, int, float]:
         metrics = row.metrics
         config = row.config
-        gpu_priority = 0 if int(config.get("num_gpu") or 0) > 0 else 1
+        gpu_priority = 0 if gpu_backed(row) else 1
         vram = float(metrics.get("max_vram_used_mb") or 0)
         latency = float(metrics.get("total_sec") or 0)
         num_gpu = int(config.get("num_gpu") or 0)
@@ -182,15 +190,25 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
             continue
         viable.append(row)
     pool = viable or averaged
+    gpu_pool = [row for row in pool if gpu_backed(row)]
+    if gpu_pool:
+        pool = gpu_pool
+    elif gpu_was_visible:
+        raise ValueError(
+            "GPU hardware was detected, but no successful GPU-backed benchmark result is available."
+        )
     best_tps = max(gen_tps(row) for row in pool)
     close_to_best = [row for row in pool if gen_tps(row) >= best_tps * 0.95]
     selected = min(close_to_best, key=stability_score) if len(close_to_best) > 1 else max(pool, key=gen_tps)
-    reason = (
-        "Selected because it had the best stable generation throughput while staying within "
-        "the VRAM safety limit and preferring GPU-backed configs when throughput was close."
-    )
+    reason = "Selected the best GPU-backed configuration that stayed within the VRAM safety limit."
+    if not gpu_backed(selected):
+        reason = (
+            "Selected because no successful GPU-backed benchmark result was available, so the "
+            "best CPU configuration was used as a fallback."
+        )
     details = _build_details(selected)
     return selected.config, selected.metrics, reason, {
+        "recommendation_version": RECOMMENDATION_VERSION,
         "best_for": details.best_for,
         "not_ideal_for": details.not_ideal_for,
         "examples": details.examples,

@@ -1,4 +1,5 @@
 from app.services.recommendations import choose_recommendation
+from app.services.benchmark_matrix import build_matrix
 
 
 class Result:
@@ -21,6 +22,50 @@ def test_choose_recommendation_prefers_fast_stable_config():
     assert metrics["gen_tps"] == 9.8
     assert "Selected" in reason
     assert "summary" in details
+
+
+def test_build_matrix_uses_full_gpu_offload_when_gpu_is_available():
+    matrix = build_matrix("quick", gpu_available=True)
+
+    assert any(config["num_gpu"] == -1 for config in matrix)
+    assert all(config["num_gpu"] != 0 for config in matrix)
+
+
+def test_choose_recommendation_prefers_gpu_backed_result_when_available():
+    config, metrics, reason, _ = choose_recommendation(
+        [
+            Result({"num_gpu": 0, "num_thread": 8}, {"gen_tps": 18, "total_sec": 5, "max_vram_used_mb": 0}),
+            Result(
+                {"num_gpu": -1, "num_thread": 8},
+                {"gen_tps": 14, "total_sec": 6, "max_vram_used_mb": 6000, "gpu_vram_total_mb": 12000},
+            ),
+        ]
+    )
+
+    assert config["num_gpu"] == -1
+    assert metrics["gen_tps"] == 14
+    assert "GPU-backed" in reason
+
+
+def test_choose_recommendation_rejects_cpu_fallback_when_gpu_was_visible():
+    try:
+        choose_recommendation(
+            [
+                Result(
+                    {"num_gpu": 0, "num_thread": 8},
+                    {"gen_tps": 18, "total_sec": 5, "max_vram_used_mb": 0, "gpu_vram_total_mb": 12000},
+                ),
+                Result(
+                    {"num_gpu": -1, "num_thread": 8},
+                    {"gpu_vram_total_mb": 12000},
+                    status="failed",
+                ),
+            ]
+        )
+    except ValueError as exc:
+        assert "GPU hardware was detected" in str(exc)
+    else:
+        raise AssertionError("Expected CPU fallback to be rejected when GPU was visible")
 
 
 def test_choose_recommendation_averages_repeated_configs():

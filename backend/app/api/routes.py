@@ -22,7 +22,7 @@ from app.schemas.api import (
 from app.services.agent_client import AgentClient
 from app.services.benchmark_matrix import build_matrix
 from app.services.exports import render_export
-from app.services.recommendations import choose_recommendation
+from app.services.recommendations import RECOMMENDATION_VERSION, choose_recommendation
 
 router = APIRouter()
 api_router = APIRouter(prefix="/api", dependencies=[Depends(require_backend_api_key)])
@@ -31,7 +31,7 @@ TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 async def _get_recommendation_record(repo: BenchmarkRepository, run_id: str):
     existing = await repo.get_recommendation(run_id)
-    if existing and existing.details:
+    if existing and (existing.details or {}).get("recommendation_version") == RECOMMENDATION_VERSION:
         return existing
     results = await repo.list_results(run_id)
     config, metrics, reason, details = choose_recommendation(results)
@@ -134,8 +134,18 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
     if payload.matrix:
         matrix = [item.model_dump() for item in payload.matrix]
     else:
-        snapshot = await HostRepository(session).latest_snapshot(host.id)
+        host_repo = HostRepository(session)
+        snapshot = await host_repo.latest_snapshot(host.id)
         gpu_available = bool(((snapshot.payload or {}).get("gpus") if snapshot else []))
+        if not gpu_available:
+            try:
+                hardware = await AgentClient(host.agent_url).get_hardware()
+            except httpx.HTTPError:
+                hardware = {}
+            gpu_available = bool(hardware.get("gpus"))
+            if hardware:
+                await host_repo.update(host, HostUpdate(status="online"))
+                await host_repo.add_snapshot(host.id, hardware)
         matrix = build_matrix(payload.mode, gpu_available)
     try:
         agent_run = await AgentClient(host.agent_url).start_benchmark(

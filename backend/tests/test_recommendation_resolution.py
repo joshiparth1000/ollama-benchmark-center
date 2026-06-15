@@ -5,6 +5,7 @@ import pytest
 
 from app.api.routes import _get_recommendation_record, check_host_status, delete_benchmark_run
 from app.schemas.api import BenchmarkRunRead
+from app.services.recommendations import RECOMMENDATION_VERSION
 
 
 class FakeRecommendation:
@@ -37,11 +38,14 @@ class FakeRepo:
 
 @pytest.mark.asyncio
 async def test_get_recommendation_record_returns_existing_when_details_are_present():
-    repo = FakeRepo(FakeRecommendation({"summary": "ready"}), [])
+    repo = FakeRepo(
+        FakeRecommendation({"recommendation_version": RECOMMENDATION_VERSION, "summary": "ready"}),
+        [],
+    )
 
     result = await _get_recommendation_record(repo, "run-1")
 
-    assert result.details == {"summary": "ready"}
+    assert result.details == {"recommendation_version": RECOMMENDATION_VERSION, "summary": "ready"}
     assert repo.saved is None
 
 
@@ -59,6 +63,28 @@ async def test_get_recommendation_record_backfills_empty_details(monkeypatch):
 
     assert result["details"] == {"summary": "filled"}
     assert repo.saved["run_id"] == "run-2"
+
+
+@pytest.mark.asyncio
+async def test_get_recommendation_record_recomputes_stale_recommendation(monkeypatch):
+    repo = FakeRepo(FakeRecommendation({"summary": "old cpu recommendation"}), [{"config": {"num_gpu": -1}, "metrics": {"gen_tps": 9}}])
+
+    def fake_choose_recommendation(results):
+        assert results == repo.results
+        return (
+            {"num_gpu": -1},
+            {"gen_tps": 9},
+            "picked gpu",
+            {"recommendation_version": RECOMMENDATION_VERSION, "summary": "fresh gpu recommendation"},
+        )
+
+    monkeypatch.setattr("app.api.routes.choose_recommendation", fake_choose_recommendation)
+
+    result = await _get_recommendation_record(repo, "run-3")
+
+    assert result["config"] == {"num_gpu": -1}
+    assert result["details"]["recommendation_version"] == RECOMMENDATION_VERSION
+    assert repo.saved["reason"] == "picked gpu"
 
 
 def test_benchmark_run_read_includes_live_metadata_fields():
