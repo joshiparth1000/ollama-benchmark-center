@@ -136,7 +136,8 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
     else:
         host_repo = HostRepository(session)
         snapshot = await host_repo.latest_snapshot(host.id)
-        gpu_available = bool(((snapshot.payload or {}).get("gpus") if snapshot else []))
+        hardware = snapshot.payload if snapshot else {}
+        gpu_available = bool((hardware or {}).get("gpus"))
         if not gpu_available:
             try:
                 hardware = await AgentClient(host.agent_url).get_hardware()
@@ -146,7 +147,7 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
             if hardware:
                 await host_repo.update(host, HostUpdate(status="online"))
                 await host_repo.add_snapshot(host.id, hardware)
-        matrix = build_matrix(payload.mode, gpu_available)
+        matrix = build_matrix(payload.mode, gpu_available, hardware)
     try:
         agent_run = await AgentClient(host.agent_url).start_benchmark(
             {"model": payload.model, "mode": payload.mode, "prompt": payload.prompt, "matrix": matrix}

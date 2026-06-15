@@ -1,5 +1,5 @@
 from app.services.recommendations import choose_recommendation
-from app.services.benchmark_matrix import build_matrix
+from app.services.benchmark_matrix import build_matrix, safe_thread_counts
 
 
 class Result:
@@ -25,10 +25,20 @@ def test_choose_recommendation_prefers_fast_stable_config():
 
 
 def test_build_matrix_uses_full_gpu_offload_when_gpu_is_available():
-    matrix = build_matrix("quick", gpu_available=True)
+    matrix = build_matrix("quick", gpu_available=True, hardware={"cpu": {"logical_count": 16}})
 
     assert any(config["num_gpu"] == -1 for config in matrix)
     assert all(config["num_gpu"] != 0 for config in matrix)
+
+
+def test_build_matrix_reserves_one_thread_for_the_os():
+    hardware = {"cpu": {"logical_count": 16}}
+
+    assert safe_thread_counts(hardware) == [4, 8, 12, 15]
+    matrix = build_matrix("exhaustive", gpu_available=True, hardware=hardware)
+
+    assert max(config["num_thread"] for config in matrix) == 15
+    assert all(config["num_thread"] < 16 for config in matrix)
 
 
 def test_choose_recommendation_prefers_gpu_backed_result_when_available():

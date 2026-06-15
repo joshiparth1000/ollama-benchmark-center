@@ -5,7 +5,7 @@ from time import perf_counter
 from typing import Any
 
 from app.services.hardware import resource_sample
-from app.services.hardware import detect_gpus
+from app.services.hardware import hardware_snapshot
 from app.services.ollama import generate
 
 
@@ -25,40 +25,39 @@ class BenchmarkState:
 RUNS: dict[str, BenchmarkState] = {}
 
 
+def safe_thread_counts(hardware: dict[str, Any]) -> list[int]:
+    cpu = hardware.get("cpu") or {}
+    logical_count = int(cpu.get("logical_count") or 0)
+    usable_threads = max(1, logical_count - 1) if logical_count else 8
+    candidates = [4, 8, 12, usable_threads]
+    return sorted({max(1, min(candidate, usable_threads)) for candidate in candidates})
+
+
 def default_matrix(mode: str) -> list[dict[str, Any]]:
-    base = {"num_thread": 4, "num_ctx": 4096, "num_batch": 512, "temperature": 0.2}
-    cpu = base | {"num_gpu": 0}
-    gpu = base | {"num_gpu": -1}
-    if detect_gpus():
+    hardware = hardware_snapshot()
+    thread_counts = safe_thread_counts(hardware)
+    base = {"num_ctx": 4096, "num_batch": 512, "temperature": 0.2}
+
+    def config(num_gpu: int, num_thread: int, num_predict: int, **overrides: Any) -> dict[str, Any]:
+        return base | {"num_gpu": num_gpu, "num_thread": num_thread, "num_predict": num_predict} | overrides
+
+    def limited_threads(limit: int) -> list[int]:
+        return thread_counts[:limit]
+
+    if hardware.get("gpus"):
         if mode == "balanced":
-            return [
-                gpu | {"num_predict": 256},
-                gpu | {"num_thread": 8, "num_predict": 256},
-            ]
+            return [config(-1, thread, 256) for thread in limited_threads(3)]
         if mode == "exhaustive":
             return [
-                gpu | {"num_predict": 512},
-                gpu | {"num_thread": 8, "num_predict": 512},
-                gpu | {"num_thread": 8, "num_batch": 1024, "num_predict": 512},
+                config(-1, thread, 512, **({"num_batch": 1024} if index == len(thread_counts) - 1 else {}))
+                for index, thread in enumerate(thread_counts)
             ]
-        return [
-            gpu | {"num_predict": 128},
-            gpu | {"num_thread": 8, "num_predict": 128},
-        ]
+        return [config(-1, thread, 128) for thread in limited_threads(2)]
     if mode == "balanced":
-        return [
-            cpu | {"num_predict": 256},
-            cpu | {"num_thread": 8, "num_predict": 256},
-        ]
+        return [config(0, thread, 256) for thread in limited_threads(3)]
     if mode == "exhaustive":
-        return [
-            cpu | {"num_predict": 512},
-            cpu | {"num_thread": 8, "num_predict": 512},
-        ]
-    return [
-        cpu | {"num_predict": 128},
-        cpu | {"num_thread": 8, "num_predict": 128},
-    ]
+        return [config(0, thread, 512) for thread in thread_counts]
+    return [config(0, thread, 128) for thread in limited_threads(2)]
 
 
 def compute_metrics(response: dict[str, Any], sample: dict[str, Any], started: float) -> dict[str, Any]:
