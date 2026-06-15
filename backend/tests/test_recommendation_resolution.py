@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.api.routes import _get_recommendation_record
+from app.schemas.api import BenchmarkRunRead
 
 
 class FakeRecommendation:
@@ -56,3 +59,23 @@ async def test_get_recommendation_record_backfills_empty_details(monkeypatch):
     assert result["details"] == {"summary": "filled"}
     assert repo.saved["run_id"] == "run-2"
 
+
+def test_benchmark_run_read_includes_live_metadata_fields():
+    payload = {
+        "id": "run-1",
+        "host_id": "host-1",
+        "model": "llama3.2",
+        "mode": "quick",
+        "prompt": "hello",
+        "status": "running",
+        "agent_benchmark_id": "agent-run-1",
+        "current_config": {"num_gpu": 1, "num_thread": 8},
+        "progress": {"completed": 1, "status": "running"},
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
+
+    run = BenchmarkRunRead.model_validate(payload)
+
+    assert run.current_config == {"num_gpu": 1, "num_thread": 8}
+    assert run.progress == {"completed": 1, "status": "running"}

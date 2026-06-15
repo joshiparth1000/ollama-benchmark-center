@@ -58,6 +58,8 @@ class BenchmarkRunRead(BaseModel):
     prompt: str
     status: str
     agent_benchmark_id: str | None
+    current_config: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

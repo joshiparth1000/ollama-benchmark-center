@@ -18,6 +18,8 @@ export type BenchmarkRun = {
   prompt: string;
   status: string;
   agent_benchmark_id: string | null;
+  current_config?: Record<string, number | string> | null;
+  progress?: Record<string, number | string> | null;
   created_at: string;
   updated_at: string;
 };
@@ -58,6 +60,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     throw new Error(await response.text());
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }

@@ -69,6 +69,7 @@ Preserve this layout unless there is a strong reason to change it. If you change
 The application currently supports:
 
 - Host CRUD, refresh, and hardware discovery
+- Sidebar tree navigation with hosts as parent nodes and benchmark runs as child nodes
 - Agent model discovery
 - Benchmark wizard with model dropdown and prompt templates
 - Custom prompt entry only when requested by the user
@@ -106,12 +107,10 @@ Recharts
 
 Responsibilities:
 
-- Hosts dashboard
-- Host detail view
-- Benchmark wizard
-- Live benchmark run view
-- Results and comparison screens
-- Settings screen
+- Sidebar host tree and host management actions
+- Host-scoped benchmark wizard
+- Top-right running test indicator and progress popover
+- Run results and recommendation screens
 - Export buttons and download flows
 - Friendly empty, loading, and error states
 

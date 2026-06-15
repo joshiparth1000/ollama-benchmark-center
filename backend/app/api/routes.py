@@ -145,13 +145,26 @@ async def get_benchmark_run(run_id: str, session: AsyncSession = Depends(get_ses
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
-    if run.agent_benchmark_id and (run.status not in TERMINAL_STATUSES or not await repo.list_results(run.id)):
+    existing_results = await repo.list_results(run.id)
+    setattr(run, "current_config", None)
+    setattr(run, "progress", {"completed": len(existing_results), "status": run.status})
+    if run.agent_benchmark_id and (run.status not in TERMINAL_STATUSES or not existing_results):
         host = await HostRepository(session).get(run.host_id)
         if host:
             agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
+            agent_results = agent_run.get("results") or []
             run = await repo.update_run(run, status=agent_run.get("status", run.status))
-            if agent_run.get("results"):
-                await repo.replace_results(run.id, agent_run["results"])
+            setattr(run, "current_config", agent_run.get("current_config"))
+            setattr(
+                run,
+                "progress",
+                {
+                    "completed": len(agent_results),
+                    "status": agent_run.get("status", run.status),
+                },
+            )
+            if agent_results:
+                await repo.replace_results(run.id, agent_results)
     return run
 
 

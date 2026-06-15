@@ -4,11 +4,11 @@ Ollama Benchmark Center is a local-first platform for benchmarking Ollama-hosted
 
 ## What It Does
 
-- Registers local or remote benchmark hosts
+- Manages local or remote benchmark hosts from a sidebar tree
 - Discovers host hardware and available Ollama models
 - Runs benchmark matrices against selected models and prompts
 - Samples CPU, RAM, and GPU signals during runs
-- Shows live progress, results, and comparison charts
+- Shows running test counts, live progress, results, and comparison charts
 - Generates plain-English recommendations with example use cases
 - Exports configs for Ollama, Modelfile, llama.cpp, Docker Compose, Kubernetes, and Helm values
 
@@ -64,11 +64,11 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 1. Start the Compose stack.
 2. Pull a model into Ollama if needed.
 3. Add the local agent at `http://localhost:9000`.
-4. Refresh the host to load hardware and model discovery.
-5. Open the benchmark wizard.
-6. Select a model from the dropdown, choose a prompt template or custom prompt, and pick a benchmark mode.
-7. Run the benchmark and watch the live result page.
-8. Review the recommendation, example task fit, charts, and export options.
+4. Select the host in the left sidebar tree.
+5. Use the host workspace to refresh models and start a benchmark.
+6. Expand the host to see benchmark tests already conducted.
+7. Click a test to review recommendations, charts, metrics, and exports.
+8. Use the top-right running count to inspect active test progress.
 
 ## Useful Checks
 
