@@ -71,6 +71,10 @@ type HardwareData = {
   gpus?: Array<{ name?: string; vram_total_mb?: number; vram_used_mb?: number; utilization_percent?: number }>;
 };
 
+type PendingDelete =
+  | { kind: "host"; id: string; name: string }
+  | { kind: "run"; id: string; name: string };
+
 function StatusBadge({ status }: { status: string }) {
   const tone = status === "online" || status === "completed" ? "bg-accent/15 text-accent" : "bg-warn/15 text-warn";
   return <span className={`rounded px-2 py-1 text-xs font-medium ${tone}`}>{status}</span>;
@@ -139,6 +143,7 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
   const [agentUrl, setAgentUrl] = useState("http://localhost:9000");
   const [editName, setEditName] = useState("");
   const [editAgentUrl, setEditAgentUrl] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const runsByHost = useMemo(() => {
     const grouped = new Map<string, BenchmarkRun[]>();
@@ -170,6 +175,7 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
   const deleteHost = useMutation({
     mutationFn: api.deleteHost,
     onSuccess: () => {
+      setPendingDelete(null);
       setEditingHostId(null);
       selectHost(null);
       queryClient.invalidateQueries({ queryKey: ["hosts"] });
@@ -179,6 +185,7 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
   const deleteRun = useMutation({
     mutationFn: api.deleteRun,
     onSuccess: (_data, runId) => {
+      setPendingDelete(null);
       forgetRun(runId);
       queryClient.invalidateQueries({ queryKey: ["runs"] });
       queryClient.removeQueries({ queryKey: ["results", runId] });
@@ -205,6 +212,19 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
   const saveHostEdit = (hostId: string) => {
     updateHost.mutate({ hostId, payload: { name: editName, agent_url: editAgentUrl } });
   };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) {
+      return;
+    }
+    if (pendingDelete.kind === "host") {
+      deleteHost.mutate(pendingDelete.id);
+    } else {
+      deleteRun.mutate(pendingDelete.id);
+    }
+  };
+
+  const deletePending = deleteHost.isPending || deleteRun.isPending;
 
   return (
     <aside className="flex min-h-screen flex-col border-r border-line bg-panel">
@@ -267,11 +287,7 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
                     title="Delete host"
                     aria-label={`Delete host ${host.name}`}
                     disabled={deleteHost.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Delete host ${host.name} and all of its benchmark tests?`)) {
-                        deleteHost.mutate(host.id);
-                      }
-                    }}
+                    onClick={() => setPendingDelete({ kind: "host", id: host.id, name: host.name })}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -337,9 +353,7 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
                             disabled={deleteRun.isPending}
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (window.confirm(`Delete benchmark test for ${run.model}?`)) {
-                                deleteRun.mutate(run.id);
-                              }
+                              setPendingDelete({ kind: "run", id: run.id, name: run.model });
                             }}
                           >
                             <Trash2 size={14} />
@@ -360,6 +374,40 @@ function Sidebar({ hosts, runs }: { hosts: Host[]; runs: BenchmarkRun[] }) {
           <GitCompare size={16} /> {compareOpen ? "Hide compare" : "Compare tests"}
         </button>
       </div>
+      {pendingDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded border border-line bg-panel p-4 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded bg-red-500/10 p-2 text-red-300">
+                <Trash2 size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-base font-semibold text-slate-100">
+                  Delete {pendingDelete.kind === "host" ? "host" : "benchmark test"}?
+                </div>
+                <p className="mt-2 text-sm text-slate-400">
+                  {pendingDelete.kind === "host"
+                    ? `This will remove ${pendingDelete.name} and all benchmark tests stored for it.`
+                    : `This will remove the benchmark test for ${pendingDelete.name} and its saved results.`}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setPendingDelete(null)} disabled={deletePending}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="border-red-800 bg-red-950 text-red-100 hover:bg-red-900"
+                onClick={confirmDelete}
+                disabled={deletePending}
+              >
+                <Trash2 size={16} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
