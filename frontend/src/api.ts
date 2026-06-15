@@ -75,6 +75,7 @@ export const api = {
     request<Host>(`/api/hosts/${hostId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteHost: (hostId: string) => request<void>(`/api/hosts/${hostId}`, { method: "DELETE" }),
   refreshHost: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/refresh`, { method: "POST" }),
+  checkHostStatus: (hostId: string) => request<Host>(`/api/hosts/${hostId}/status`, { method: "POST" }),
   hardware: (hostId: string) => request<Record<string, unknown>>(`/api/hosts/${hostId}/hardware`),
   models: (hostId: string) => request<{ models?: Array<{ name: string }> }>(`/api/hosts/${hostId}/models`),
   runs: () => request<BenchmarkRun[]>("/api/benchmark-runs"),
@@ -82,6 +83,7 @@ export const api = {
   createRun: (payload: { host_id: string; model: string; mode: string; prompt: string }) =>
     request<BenchmarkRun>("/api/benchmark-runs", { method: "POST", body: JSON.stringify(payload) }),
   run: (runId: string) => request<BenchmarkRun>(`/api/benchmark-runs/${runId}`),
+  deleteRun: (runId: string) => request<void>(`/api/benchmark-runs/${runId}`, { method: "DELETE" }),
   cancelRun: (runId: string) => request<BenchmarkRun>(`/api/benchmark-runs/${runId}/cancel`, { method: "POST" }),
   recommendation: (runId: string) => request<Recommendation>(`/api/benchmark-runs/${runId}/recommendation`),
   exportRun: (runId: string, kind: string) =>

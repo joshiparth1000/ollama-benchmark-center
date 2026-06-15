@@ -95,6 +95,19 @@ async def refresh_host(host_id: str, session: AsyncSession = Depends(get_session
     return await repo.add_snapshot(host_id, hardware)
 
 
+@api_router.post("/hosts/{host_id}/status", response_model=HostRead)
+async def check_host_status(host_id: str, session: AsyncSession = Depends(get_session)):
+    repo = HostRepository(session)
+    host = await repo.get(host_id)
+    if not host:
+        raise HTTPException(404, "Host not found")
+    try:
+        await AgentClient(host.agent_url).get_health()
+    except httpx.HTTPError:
+        return await repo.update(host, HostUpdate(status="offline"))
+    return await repo.update(host, HostUpdate(status="online"))
+
+
 @api_router.get("/hosts/{host_id}/hardware")
 async def get_hardware(host_id: str, session: AsyncSession = Depends(get_session)):
     host = await HostRepository(session).get(host_id)
@@ -193,6 +206,21 @@ async def cancel_benchmark_run(run_id: str, session: AsyncSession = Depends(get_
     if host and run.agent_benchmark_id:
         await AgentClient(host.agent_url).cancel_benchmark(run.agent_benchmark_id)
     return await repo.update_run(run, status="cancelled")
+
+
+@api_router.delete("/benchmark-runs/{run_id}", status_code=204)
+async def delete_benchmark_run(run_id: str, session: AsyncSession = Depends(get_session)) -> None:
+    repo = BenchmarkRepository(session)
+    run = await repo.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Benchmark run not found")
+    host = await HostRepository(session).get(run.host_id)
+    if host and run.agent_benchmark_id and run.status not in TERMINAL_STATUSES:
+        try:
+            await AgentClient(host.agent_url).cancel_benchmark(run.agent_benchmark_id)
+        except httpx.HTTPError:
+            pass
+    await repo.delete_run(run)
 
 
 @api_router.get("/benchmark-runs/{run_id}/recommendation", response_model=RecommendationRead)

@@ -38,6 +38,13 @@ class BenchmarkRepository:
         await self.session.refresh(run)
         return run
 
+    async def delete_run(self, run: BenchmarkRun) -> None:
+        await self.session.execute(delete(BenchmarkResult).where(BenchmarkResult.run_id == run.id))
+        await self.session.execute(delete(Recommendation).where(Recommendation.run_id == run.id))
+        await self.session.execute(delete(Export).where(Export.run_id == run.id))
+        await self.session.delete(run)
+        await self.session.commit()
+
     async def replace_results(self, run_id: str, results: list[dict]) -> list[BenchmarkResult]:
         await self.session.execute(delete(BenchmarkResult).where(BenchmarkResult.run_id == run_id))
         await self.session.execute(delete(Recommendation).where(Recommendation.run_id == run_id))
