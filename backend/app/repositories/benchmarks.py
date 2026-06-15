@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import BenchmarkResult, BenchmarkRun, Export, Recommendation
@@ -39,6 +39,9 @@ class BenchmarkRepository:
         return run
 
     async def replace_results(self, run_id: str, results: list[dict]) -> list[BenchmarkResult]:
+        await self.session.execute(delete(BenchmarkResult).where(BenchmarkResult.run_id == run_id))
+        await self.session.execute(delete(Recommendation).where(Recommendation.run_id == run_id))
+        await self.session.execute(delete(Export).where(Export.run_id == run_id))
         rows: list[BenchmarkResult] = []
         for result in results:
             metrics = result.get("metrics", {})
@@ -61,8 +64,15 @@ class BenchmarkRepository:
         stmt = select(BenchmarkResult).where(BenchmarkResult.run_id == run_id)
         return list((await self.session.scalars(stmt)).all())
 
-    async def save_recommendation(self, run_id: str, config: dict, metrics: dict, reason: str) -> Recommendation:
-        recommendation = Recommendation(run_id=run_id, config=config, metrics=metrics, reason=reason)
+    async def save_recommendation(
+        self,
+        run_id: str,
+        config: dict,
+        metrics: dict,
+        reason: str,
+        details: dict,
+    ) -> Recommendation:
+        recommendation = Recommendation(run_id=run_id, config=config, metrics=metrics, reason=reason, details=details)
         self.session.add(recommendation)
         await self.session.commit()
         await self.session.refresh(recommendation)

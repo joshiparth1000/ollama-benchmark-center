@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api, type BenchmarkResult, type BenchmarkRun, type Host } from "./api";
+import { getRecommendationNarrative } from "./recommendation";
 import { useUiStore } from "./store";
 import "./styles.css";
 
@@ -425,16 +426,20 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
       return queryStatus === "running" || queryStatus === "queued" ? 2000 : false;
     }
   });
+  const completedResults = useMemo(
+    () => (results.data ?? []).filter((row) => row.status === "completed"),
+    [results.data]
+  );
   const recommendation = useQuery({
     queryKey: ["recommendation", selectedRunId],
     queryFn: () => api.recommendation(selectedRunId),
-    enabled: Boolean(selectedRunId)
+    enabled: Boolean(selectedRunId && completedResults.length > 0)
   });
   const exportMutation = useMutation({ mutationFn: (kind: string) => api.exportRun(selectedRunId, kind) });
+  const recommendationNarrative = useMemo(() => getRecommendationNarrative(recommendation.data), [recommendation.data]);
   const chartData = useMemo(
     () =>
-      (results.data ?? [])
-        .filter((row) => row.status === "completed")
+      completedResults
         .sort((a, b) => Number(b.metrics.gen_tps ?? 0) - Number(a.metrics.gen_tps ?? 0))
         .slice(0, 6)
         .map((row) => ({
@@ -449,7 +454,7 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
         cpu_pct: Number(row.metrics.cpu_usage_percent ?? 0),
         ram_pct: Number(row.metrics.ram_usage_percent ?? 0)
       })),
-    [results.data]
+    [completedResults]
   );
   const summary = recommendation.data?.metrics ?? {};
 
@@ -463,42 +468,86 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
           <Download size={16} /> Export
         </button>
       </div>
-      {recommendation.data ? (
-        <div className="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">Best config</div>
-            <div className="mt-1 font-medium">{formatConfigLabel(recommendation.data.config)}</div>
+      <div className="mb-4 rounded border border-line p-3">
+        <div className="mb-3 text-sm font-medium text-slate-300">Recommendation</div>
+        {recommendation.data ? (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Best config</div>
+              <div className="mt-1 font-medium">{formatConfigLabel(recommendation.data.config)}</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Best for</div>
+              <div className="mt-1 font-medium">{recommendationNarrative?.bestFor ?? "n/a"}</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Generation TPS</div>
+              <div className="mt-1 font-medium">{Number(summary.gen_tps ?? 0).toFixed(2)}</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Prompt TPS</div>
+              <div className="mt-1 font-medium">{Number(summary.prompt_tps ?? 0).toFixed(2)}</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">TTFT</div>
+              <div className="mt-1 font-medium">{Number(summary.ttft_sec ?? 0).toFixed(2)} s</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Total latency</div>
+              <div className="mt-1 font-medium">{Number(summary.total_sec ?? 0).toFixed(2)} s</div>
+            </div>
+            <div className="rounded border border-line p-3">
+              <div className="text-xs text-slate-400">Peak VRAM</div>
+              <div className="mt-1 font-medium">{Number(summary.max_vram_used_mb ?? 0).toFixed(0)} MB</div>
+            </div>
+            <div className="rounded border border-line p-3 xl:col-span-3">
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                <div>
+                  <div className="text-xs text-slate-400">What this means</div>
+                  <p className="mt-1 text-sm text-slate-200">{recommendationNarrative?.summary ?? recommendation.data.reason}</p>
+                  <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">Why we picked it</p>
+                  <p className="mt-1 text-sm text-slate-300">{recommendation.data.reason}</p>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">Not ideal for</div>
+                  <ul className="mt-2 space-y-2 text-sm text-slate-300">
+                    {(recommendationNarrative?.notIdealFor ?? []).map((item) => (
+                      <li key={item} className="rounded border border-line/60 bg-slate-950/30 px-3 py-2">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className="rounded border border-line p-3 xl:col-span-3">
+              <div className="text-xs text-slate-400">Examples of what it can handle</div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {(recommendationNarrative?.examples ?? []).map((item) => (
+                  <div key={item.task} className="rounded border border-line/60 bg-slate-950/30 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium text-slate-100">{item.task}</div>
+                      <div className="text-xs text-accent">{item.fit}</div>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-300">{item.why}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">Generation TPS</div>
-            <div className="mt-1 font-medium">{Number(summary.gen_tps ?? 0).toFixed(2)}</div>
+        ) : completedResults.length > 0 ? (
+          <div className={recommendation.isError ? "error" : "empty"}>
+            {recommendation.isError ? "Could not load the recommendation for this run." : "Preparing recommendation from completed results..."}
           </div>
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">Prompt TPS</div>
-            <div className="mt-1 font-medium">{Number(summary.prompt_tps ?? 0).toFixed(2)}</div>
-          </div>
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">TTFT</div>
-            <div className="mt-1 font-medium">{Number(summary.ttft_sec ?? 0).toFixed(2)} s</div>
-          </div>
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">Total latency</div>
-            <div className="mt-1 font-medium">{Number(summary.total_sec ?? 0).toFixed(2)} s</div>
-          </div>
-          <div className="rounded border border-line p-3">
-            <div className="text-xs text-slate-400">Peak VRAM</div>
-            <div className="mt-1 font-medium">{Number(summary.max_vram_used_mb ?? 0).toFixed(0)} MB</div>
-          </div>
-        </div>
-      ) : null}
-      {recommendation.isError ? <div className="empty">Recommendation appears after successful results are stored.</div> : null}
+        ) : (
+          <div className="empty">Recommendation appears after successful results are stored.</div>
+        )}
+      </div>
       {results.isLoading ? <div className="empty">Loading benchmark results...</div> : null}
       {results.isError ? <div className="error">Could not load benchmark results.</div> : null}
       {chartData.length > 0 ? (
         <div className="space-y-4">
-          <div className="text-xs text-slate-400">
-            Charts show the top {chartData.length} completed configs by generation throughput. Open the details section for the full run.
-          </div>
+          <div className="text-xs text-slate-400">Charts show the top {chartData.length} completed configs by generation throughput. Open the details section for the full run.</div>
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded border border-line p-3">
               <div className="mb-3 text-sm font-medium text-slate-300">Throughput</div>
@@ -555,11 +604,6 @@ function Results({ runs }: { runs: BenchmarkRun[] }) {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-            <div className="rounded border border-line p-3">
-              <div className="mb-3 text-sm font-medium text-slate-300">Recommendation</div>
-              <pre>{JSON.stringify(recommendation.data?.config ?? {}, null, 2)}</pre>
-              <p className="text-sm text-slate-300">{recommendation.data?.reason}</p>
             </div>
           </div>
           <details className="rounded border border-line bg-panel p-3" open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>

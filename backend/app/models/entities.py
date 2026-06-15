@@ -67,6 +67,7 @@ class Recommendation(Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

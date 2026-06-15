@@ -39,6 +39,12 @@ export type Recommendation = {
   config: Record<string, number | string>;
   metrics: Record<string, number | string>;
   reason: string;
+  details: {
+    best_for: string;
+    not_ideal_for: string[];
+    examples: Array<{ task: string; fit: string; why: string }>;
+    summary: string;
+  };
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

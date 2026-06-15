@@ -42,14 +42,23 @@ def detect_gpus() -> list[dict[str, Any]]:
         return []
     gpus = []
     for index, line in enumerate(output.splitlines()):
-        name, total, used, utilization = [part.strip() for part in line.split(",")]
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) != 4:
+            continue
+        name, total, used, utilization = parts
+        try:
+            total_mb = float(total)
+            used_mb = float(used)
+            utilization_percent = float(utilization)
+        except ValueError:
+            continue
         gpus.append(
             {
                 "index": index,
                 "name": name,
-                "vram_total_mb": float(total),
-                "vram_used_mb": float(used),
-                "utilization_percent": float(utilization),
+                "vram_total_mb": total_mb,
+                "vram_used_mb": used_mb,
+                "utilization_percent": utilization_percent,
             }
         )
     return gpus

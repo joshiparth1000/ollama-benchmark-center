@@ -92,6 +92,7 @@ class RecommendationRead(BaseModel):
     config: dict[str, Any]
     metrics: dict[str, Any]
     reason: str
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExportRead(BaseModel):

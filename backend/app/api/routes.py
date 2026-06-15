@@ -29,6 +29,15 @@ api_router = APIRouter(prefix="/api", dependencies=[Depends(require_backend_api_
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
+async def _get_recommendation_record(repo: BenchmarkRepository, run_id: str):
+    existing = await repo.get_recommendation(run_id)
+    if existing and existing.details:
+        return existing
+    results = await repo.list_results(run_id)
+    config, metrics, reason, details = choose_recommendation(results)
+    return await repo.save_recommendation(run_id, config, metrics, reason, details)
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="backend")
@@ -176,15 +185,10 @@ async def cancel_benchmark_run(run_id: str, session: AsyncSession = Depends(get_
 @api_router.get("/benchmark-runs/{run_id}/recommendation", response_model=RecommendationRead)
 async def get_recommendation(run_id: str, session: AsyncSession = Depends(get_session)):
     repo = BenchmarkRepository(session)
-    existing = await repo.get_recommendation(run_id)
-    if existing:
-        return existing
-    results = await repo.list_results(run_id)
     try:
-        config, metrics, reason = choose_recommendation(results)
+        return await _get_recommendation_record(repo, run_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    return await repo.save_recommendation(run_id, config, metrics, reason)
 
 
 @api_router.get("/benchmark-runs/{run_id}/export/{kind}", response_model=ExportRead)
@@ -196,11 +200,10 @@ async def export_run(kind: str, run_id: str, session: AsyncSession = Depends(get
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
-    recommendation = await repo.get_recommendation(run_id)
-    if not recommendation:
-        results = await repo.list_results(run_id)
-        config, metrics, reason = choose_recommendation(results)
-        recommendation = await repo.save_recommendation(run_id, config, metrics, reason)
+    try:
+        recommendation = await _get_recommendation_record(repo, run_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
     content = render_export(kind, run.model, recommendation.config)
     await repo.save_export(run_id, kind, content)
     return ExportRead(kind=kind, content=content)
