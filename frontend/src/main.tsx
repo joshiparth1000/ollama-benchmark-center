@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api, type BenchmarkResult, type BenchmarkRun, type Host } from "./api";
 import { getRecommendationNarrative } from "./recommendation";
@@ -665,6 +665,7 @@ function RunResults({ run }: { run: BenchmarkRun }) {
           total_sec: Number(row.metrics.total_sec ?? 0),
           load_sec: Number(row.metrics.load_sec ?? 0),
           vram_mb: Number(row.metrics.max_vram_used_mb ?? 0),
+          ram_mb: Number(row.metrics.ram_used_bytes ?? 0) / 1024 / 1024,
           cpu_pct: Number(row.metrics.cpu_usage_percent ?? 0),
           ram_pct: Number(row.metrics.ram_usage_percent ?? 0)
         })),
@@ -806,18 +807,21 @@ function RunResults({ run }: { run: BenchmarkRun }) {
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded border border-line p-3">
-                <div className="mb-3 text-sm font-medium text-slate-300">VRAM and system load</div>
+              <div className="rounded border border-line p-3 xl:col-span-2">
+                <div className="mb-3 text-sm font-medium text-slate-300">VRAM, RAM, and system load</div>
                 <div className="h-72">
                   <ResponsiveContainer>
                     <BarChart data={chartData}>
                       <CartesianGrid stroke="#31404a" strokeDasharray="3 3" />
                       <XAxis dataKey="name" stroke="#cbd5e1" interval={0} angle={-30} textAnchor="end" height={90} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
-                      <YAxis stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
+                      <YAxis yAxisId="memory" stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
+                      <YAxis yAxisId="percent" orientation="right" domain={[0, 100]} stroke="#cbd5e1" tick={{ fill: "#cbd5e1", fontSize: 12 }} />
                       <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "6px", color: "#e2e8f0" }} labelStyle={{ color: "#e2e8f0" }} />
-                      <Bar dataKey="vram_mb" fill="#8b5cf6" name="Peak VRAM MB" />
-                      <Bar dataKey="cpu_pct" fill="#22c55e" name="CPU %" />
-                      <Bar dataKey="ram_pct" fill="#14b8a6" name="RAM %" />
+                      <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                      <Bar yAxisId="memory" dataKey="vram_mb" fill="#8b5cf6" name="Peak VRAM MB" />
+                      <Bar yAxisId="memory" dataKey="ram_mb" fill="#14b8a6" name="RAM used MB" />
+                      <Bar yAxisId="percent" dataKey="cpu_pct" fill="#22c55e" name="CPU %" />
+                      <Bar yAxisId="percent" dataKey="ram_pct" fill="#f59e0b" name="RAM %" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -838,6 +842,8 @@ function RunResults({ run }: { run: BenchmarkRun }) {
                       <th className="py-2 pr-3">Prompt TPS</th>
                       <th className="py-2 pr-3">Latency</th>
                       <th className="py-2 pr-3">VRAM</th>
+                      <th className="py-2 pr-3">RAM</th>
+                      <th className="py-2 pr-3">CPU</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -850,6 +856,8 @@ function RunResults({ run }: { run: BenchmarkRun }) {
                         <td className="py-2 pr-3">{Number(row.metrics.prompt_tps ?? 0).toFixed(2)}</td>
                         <td className="py-2 pr-3">{Number(row.metrics.total_sec ?? 0).toFixed(2)} s</td>
                         <td className="py-2 pr-3">{Number(row.metrics.max_vram_used_mb ?? 0).toFixed(0)} MB</td>
+                        <td className="py-2 pr-3">{(Number(row.metrics.ram_used_bytes ?? 0) / 1024 / 1024).toFixed(0)} MB</td>
+                        <td className="py-2 pr-3">{Number(row.metrics.cpu_usage_percent ?? 0).toFixed(0)}%</td>
                       </tr>
                     ))}
                   </tbody>

@@ -90,6 +90,8 @@ def resource_sample() -> dict[str, Any]:
     return {
         "cpu_usage_percent": psutil.cpu_percent(interval=None),
         "ram_used_bytes": memory.used,
+        "ram_total_bytes": memory.total,
+        "ram_usage_percent": memory.percent,
         "gpus": gpus,
         "max_vram_used_mb": max((gpu["vram_used_mb"] for gpu in gpus), default=0),
         "gpu_vram_total_mb": max((gpu["vram_total_mb"] for gpu in gpus), default=0),
