@@ -645,7 +645,7 @@ function RunResults({ run }: { run: BenchmarkRun }) {
   const recommendation = useQuery({
     queryKey: ["recommendation", run.id],
     queryFn: () => api.recommendation(run.id),
-    enabled: completedResults.length > 0
+    enabled: run.status === "completed" && completedResults.length > 0
   });
   const exportMutation = useMutation({ mutationFn: (kind: string) => api.exportRun(run.id, kind) });
   const recommendationNarrative = useMemo(() => getRecommendationNarrative(recommendation.data), [recommendation.data]);

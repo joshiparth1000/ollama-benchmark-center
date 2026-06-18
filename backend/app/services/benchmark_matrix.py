@@ -78,15 +78,6 @@ def context_windows(
     return windows
 
 
-def max_context_window(
-    model: str | None,
-    mode: str,
-    gpu_available: bool,
-    hardware: dict[str, Any] | None = None,
-) -> int:
-    return max(context_windows(model, mode, gpu_available, hardware))
-
-
 def build_matrix(
     mode: str,
     gpu_available: bool,

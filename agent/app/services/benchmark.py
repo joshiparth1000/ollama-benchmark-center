@@ -102,15 +102,6 @@ def context_windows(
     return windows
 
 
-def max_context_window(
-    model: str | None,
-    mode: str,
-    gpu_available: bool,
-    hardware: dict[str, Any],
-) -> int:
-    return max(context_windows(model, mode, gpu_available, hardware))
-
-
 def default_matrix(mode: str, model: str | None = None) -> list[dict[str, Any]]:
     hardware = hardware_snapshot()
     thread_counts = safe_thread_counts(hardware)

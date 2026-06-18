@@ -29,6 +29,40 @@ api_router = APIRouter(prefix="/api", dependencies=[Depends(require_backend_api_
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
+async def _sync_agent_run(
+    repo: BenchmarkRepository,
+    run,
+    session: AsyncSession,
+) -> tuple[object, list]:
+    existing_results = await repo.list_results(run.id)
+    should_poll_agent = run.agent_benchmark_id and (
+        run.status not in TERMINAL_STATUSES or not existing_results
+    )
+    if not should_poll_agent:
+        return run, existing_results
+
+    host = await HostRepository(session).get(run.host_id)
+    if not host:
+        return run, existing_results
+
+    agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
+    agent_results = agent_run.get("results") or []
+    run = await repo.update_run(run, status=agent_run.get("status", run.status))
+    setattr(run, "current_config", agent_run.get("current_config"))
+    setattr(
+        run,
+        "progress",
+        {
+            "completed": len(agent_results),
+            "status": agent_run.get("status", run.status),
+        },
+    )
+    if agent_results:
+        await repo.replace_results(run.id, agent_results)
+        existing_results = await repo.list_results(run.id)
+    return run, existing_results
+
+
 async def _get_recommendation_record(repo: BenchmarkRepository, run_id: str):
     existing = await repo.get_recommendation(run_id)
     if existing and (existing.details or {}).get("recommendation_version") == RECOMMENDATION_VERSION:
@@ -169,26 +203,12 @@ async def get_benchmark_run(run_id: str, session: AsyncSession = Depends(get_ses
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
-    existing_results = await repo.list_results(run.id)
     setattr(run, "current_config", None)
+    existing_results = await repo.list_results(run.id)
     setattr(run, "progress", {"completed": len(existing_results), "status": run.status})
-    if run.agent_benchmark_id and (run.status not in TERMINAL_STATUSES or not existing_results):
-        host = await HostRepository(session).get(run.host_id)
-        if host:
-            agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
-            agent_results = agent_run.get("results") or []
-            run = await repo.update_run(run, status=agent_run.get("status", run.status))
-            setattr(run, "current_config", agent_run.get("current_config"))
-            setattr(
-                run,
-                "progress",
-                {
-                    "completed": len(agent_results),
-                    "status": agent_run.get("status", run.status),
-                },
-            )
-            if agent_results:
-                await repo.replace_results(run.id, agent_results)
+    run, existing_results = await _sync_agent_run(repo, run, session)
+    if not getattr(run, "progress", None):
+        setattr(run, "progress", {"completed": len(existing_results), "status": run.status})
     return run
 
 
@@ -198,13 +218,8 @@ async def list_benchmark_results(run_id: str, session: AsyncSession = Depends(ge
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
-    if run.agent_benchmark_id and not await repo.list_results(run.id):
-        host = await HostRepository(session).get(run.host_id)
-        if host:
-            agent_run = await AgentClient(host.agent_url).get_benchmark(run.agent_benchmark_id)
-            if agent_run.get("results"):
-                await repo.replace_results(run.id, agent_run["results"])
-    return await repo.list_results(run_id)
+    _, results = await _sync_agent_run(repo, run, session)
+    return results
 
 
 @api_router.post("/benchmark-runs/{run_id}/cancel", response_model=BenchmarkRunRead)
@@ -237,6 +252,12 @@ async def delete_benchmark_run(run_id: str, session: AsyncSession = Depends(get_
 @api_router.get("/benchmark-runs/{run_id}/recommendation", response_model=RecommendationRead)
 async def get_recommendation(run_id: str, session: AsyncSession = Depends(get_session)):
     repo = BenchmarkRepository(session)
+    run = await repo.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Benchmark run not found")
+    run, _ = await _sync_agent_run(repo, run, session)
+    if run.status not in TERMINAL_STATUSES:
+        raise HTTPException(409, "Recommendation is available after the benchmark run finishes.")
     try:
         return await _get_recommendation_record(repo, run_id)
     except ValueError as exc:
@@ -252,6 +273,9 @@ async def export_run(kind: str, run_id: str, session: AsyncSession = Depends(get
     run = await repo.get_run(run_id)
     if not run:
         raise HTTPException(404, "Benchmark run not found")
+    run, _ = await _sync_agent_run(repo, run, session)
+    if run.status not in TERMINAL_STATUSES:
+        raise HTTPException(409, "Exports are available after the benchmark run finishes.")
     try:
         recommendation = await _get_recommendation_record(repo, run_id)
     except ValueError as exc:

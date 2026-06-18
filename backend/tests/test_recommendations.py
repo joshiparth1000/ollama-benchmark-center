@@ -3,7 +3,6 @@ from app.services.benchmark_matrix import (
     build_matrix,
     context_windows,
     hardware_context_cap,
-    max_context_window,
     safe_thread_counts,
 )
 
@@ -80,7 +79,6 @@ def test_context_caps_follow_model_size_and_hardware():
     assert max(context_windows("qwen3-coder:30b", "exhaustive", True, mid_vram)) == 8192
     assert max(context_windows("qwen3-coder:30b", "exhaustive", True, large_vram)) == 65536
     assert max(context_windows("qwen2.5-coder:7b", "exhaustive", False, large_vram)) == 8192
-    assert max_context_window("qwen2.5-coder:7b", "exhaustive", True, mid_vram) == 65536
 
 
 def test_choose_recommendation_prefers_gpu_backed_result_when_available():

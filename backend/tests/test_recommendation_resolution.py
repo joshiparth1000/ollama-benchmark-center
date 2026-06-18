@@ -3,7 +3,13 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from app.api.routes import _get_recommendation_record, check_host_status, delete_benchmark_run
+from app.api.routes import (
+    _get_recommendation_record,
+    _sync_agent_run,
+    check_host_status,
+    delete_benchmark_run,
+    get_recommendation,
+)
 from app.schemas.api import BenchmarkRunRead
 from app.services.recommendations import RECOMMENDATION_VERSION
 
@@ -85,6 +91,95 @@ async def test_get_recommendation_record_recomputes_stale_recommendation(monkeyp
     assert result["config"] == {"num_gpu": -1}
     assert result["details"]["recommendation_version"] == RECOMMENDATION_VERSION
     assert repo.saved["reason"] == "picked gpu"
+
+
+@pytest.mark.asyncio
+async def test_sync_agent_run_refreshes_partial_active_results(monkeypatch):
+    class FakeRun:
+        id = "run-1"
+        host_id = "host-1"
+        status = "running"
+        agent_benchmark_id = "agent-run-1"
+
+    class FakeHost:
+        agent_url = "http://agent:9000"
+
+    class FakeRepo:
+        updated_status = None
+        replaced_results = None
+
+        async def list_results(self, run_id):
+            assert run_id == "run-1"
+            return [{"config": {"num_ctx": 4096}}]
+
+        async def update_run(self, run, **values):
+            run.status = values["status"]
+            FakeRepo.updated_status = values["status"]
+            return run
+
+        async def replace_results(self, run_id, results):
+            assert run_id == "run-1"
+            FakeRepo.replaced_results = results
+
+    class FakeHostRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def get(self, host_id):
+            assert host_id == "host-1"
+            return FakeHost()
+
+    class FakeAgentClient:
+        def __init__(self, agent_url):
+            assert agent_url == "http://agent:9000"
+
+        async def get_benchmark(self, benchmark_id):
+            assert benchmark_id == "agent-run-1"
+            return {
+                "status": "running",
+                "current_config": {"num_ctx": 8192},
+                "results": [
+                    {"config": {"num_ctx": 4096}, "metrics": {"gen_tps": 10}},
+                    {"config": {"num_ctx": 8192}, "metrics": {"gen_tps": 12}},
+                ],
+            }
+
+    monkeypatch.setattr("app.api.routes.HostRepository", FakeHostRepo)
+    monkeypatch.setattr("app.api.routes.AgentClient", FakeAgentClient)
+
+    run, _ = await _sync_agent_run(FakeRepo(), FakeRun(), session=object())
+
+    assert run.status == "running"
+    assert run.current_config == {"num_ctx": 8192}
+    assert run.progress == {"completed": 2, "status": "running"}
+    assert FakeRepo.updated_status == "running"
+    assert len(FakeRepo.replaced_results) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_recommendation_waits_for_terminal_run(monkeypatch):
+    class FakeRun:
+        id = "run-1"
+        status = "running"
+
+    class FakeBenchmarkRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def get_run(self, run_id):
+            assert run_id == "run-1"
+            return FakeRun()
+
+    async def fake_sync(repo, run, session):
+        return run, []
+
+    monkeypatch.setattr("app.api.routes.BenchmarkRepository", FakeBenchmarkRepo)
+    monkeypatch.setattr("app.api.routes._sync_agent_run", fake_sync)
+
+    with pytest.raises(Exception) as exc:
+        await get_recommendation("run-1", session=object())
+
+    assert getattr(exc.value, "status_code", None) == 409
 
 
 def test_benchmark_run_read_includes_live_metadata_fields():
