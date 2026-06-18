@@ -1,5 +1,11 @@
 from app.services.recommendations import choose_recommendation
-from app.services.benchmark_matrix import build_matrix, safe_thread_counts
+from app.services.benchmark_matrix import (
+    build_matrix,
+    context_windows,
+    hardware_context_cap,
+    max_context_window,
+    safe_thread_counts,
+)
 
 
 class Result:
@@ -41,6 +47,42 @@ def test_build_matrix_reserves_one_thread_for_the_os():
     assert all(config["num_thread"] < 16 for config in matrix)
 
 
+def test_build_matrix_expands_context_for_7b_models():
+    hardware = {"cpu": {"logical_count": 16}, "gpus": [{"vram_total_mb": 12288}]}
+
+    assert hardware_context_cap("qwen2.5-coder:7b", True, hardware) == 65536
+    assert context_windows("qwen2.5-coder:7b", "balanced", True, hardware) == [
+        4096,
+        8192,
+        16384,
+        32768,
+    ]
+    assert context_windows("qwen2.5-coder:7b", "exhaustive", True, hardware) == [
+        4096,
+        8192,
+        16384,
+        32768,
+        65536,
+    ]
+    matrix = build_matrix("balanced", gpu_available=True, hardware=hardware, model="qwen2.5-coder:7b")
+
+    assert {config["num_ctx"] for config in matrix} == {4096, 8192, 16384, 32768}
+    assert {config["num_thread"] for config in matrix} == {4, 8, 12}
+
+
+def test_context_caps_follow_model_size_and_hardware():
+    low_vram = {"gpus": [{"vram_total_mb": 8192}]}
+    mid_vram = {"gpus": [{"vram_total_mb": 12288}]}
+    large_vram = {"gpus": [{"vram_total_mb": 49152}]}
+
+    assert max(context_windows("qwen2.5-coder:7b", "exhaustive", True, low_vram)) == 32768
+    assert max(context_windows("qwen2.5-coder:7b", "exhaustive", True, mid_vram)) == 65536
+    assert max(context_windows("qwen3-coder:30b", "exhaustive", True, mid_vram)) == 8192
+    assert max(context_windows("qwen3-coder:30b", "exhaustive", True, large_vram)) == 65536
+    assert max(context_windows("qwen2.5-coder:7b", "exhaustive", False, large_vram)) == 8192
+    assert max_context_window("qwen2.5-coder:7b", "exhaustive", True, mid_vram) == 65536
+
+
 def test_choose_recommendation_prefers_gpu_backed_result_when_available():
     config, metrics, reason, _ = choose_recommendation(
         [
@@ -55,6 +97,27 @@ def test_choose_recommendation_prefers_gpu_backed_result_when_available():
     assert config["num_gpu"] == -1
     assert metrics["gen_tps"] == 14
     assert "GPU-backed" in reason
+
+
+def test_choose_recommendation_prefers_larger_context_when_throughput_is_close():
+    config, _, _, details = choose_recommendation(
+        [
+            Result(
+                {"num_gpu": -1, "num_thread": 4, "num_ctx": 4096},
+                {"gen_tps": 20, "total_sec": 5, "max_vram_used_mb": 5000, "gpu_vram_total_mb": 12000},
+            ),
+            Result(
+                {"num_gpu": -1, "num_thread": 12, "num_ctx": 16384},
+                {"gen_tps": 19.2, "total_sec": 5.2, "max_vram_used_mb": 7000, "gpu_vram_total_mb": 12000},
+            ),
+        ]
+    )
+
+    assert config["num_ctx"] == 16384
+    assert config["num_thread"] == 12
+    assert details["recommended_context"] == 16384
+    assert details["max_tested_context"] == 16384
+    assert "16,384 tokens" in details["context_window_note"]
 
 
 def test_choose_recommendation_rejects_cpu_fallback_when_gpu_was_visible():

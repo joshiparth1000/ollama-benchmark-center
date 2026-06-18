@@ -18,6 +18,10 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "ollama-runtime.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- if .Values.modelBootstrap.enabled }}
+      annotations:
+        checksum/model-bootstrap: {{ toJson .Values.modelBootstrap | sha256sum }}
+      {{- end }}
     spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
@@ -42,6 +46,16 @@ spec:
         - name: ollama
           image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
           imagePullPolicy: {{ .Values.ollama.pullPolicy }}
+          {{- if and .Values.modelBootstrap.enabled (gt (len .Values.modelBootstrap.models) 0) }}
+          command:
+            - /bin/sh
+            - /opt/ollama-runtime/bootstrap.sh
+          env:
+            - name: MODEL_BOOTSTRAP_WAIT_SECONDS
+              value: {{ .Values.modelBootstrap.waitSeconds | quote }}
+            - name: MODEL_BOOTSTRAP_RECREATE_EXISTING
+              value: {{ .Values.modelBootstrap.recreateExisting | quote }}
+          {{- end }}
           resources:
             {{- toYaml .Values.ollama.resources | nindent 12 }}
           ports:
@@ -50,6 +64,11 @@ spec:
           volumeMounts:
             - name: ollama-data
               mountPath: /root/.ollama
+            {{- if and .Values.modelBootstrap.enabled (gt (len .Values.modelBootstrap.models) 0) }}
+            - name: model-bootstrap
+              mountPath: /opt/ollama-runtime
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /api/version
@@ -112,6 +131,12 @@ spec:
           hostPath:
             path: {{ .Values.persistence.hostPath }}
             type: DirectoryOrCreate
+        {{- if and .Values.modelBootstrap.enabled (gt (len .Values.modelBootstrap.models) 0) }}
+        - name: model-bootstrap
+          configMap:
+            name: ollama-runtime-model-bootstrap
+            defaultMode: 0555
+        {{- end }}
         {{- if .Values.agent.gpuAccess.enabled }}
         - name: nvidia-bin
           hostPath:

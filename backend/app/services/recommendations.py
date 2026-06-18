@@ -5,7 +5,7 @@ from typing import Any
 from app.models.entities import BenchmarkResult
 
 
-RECOMMENDATION_VERSION = 2
+RECOMMENDATION_VERSION = 3
 
 
 @dataclass
@@ -20,6 +20,9 @@ class RecommendationDetails:
     not_ideal_for: list[str]
     examples: list[dict[str, str]]
     summary: str
+    recommended_context: int
+    max_tested_context: int
+    context_window_note: str
 
 
 def _tier_from_candidate(candidate: RecommendationCandidate) -> str:
@@ -40,7 +43,27 @@ def _tier_from_candidate(candidate: RecommendationCandidate) -> str:
     return "balanced"
 
 
-def _narrative_for_tier(tier: str, candidate: RecommendationCandidate) -> RecommendationDetails:
+def _context_window_note(recommended_context: int, max_tested_context: int) -> str:
+    if max_tested_context <= 0:
+        return "No context-window information was available for this benchmark."
+    if recommended_context >= max_tested_context:
+        return (
+            f"This benchmark tried up to {max_tested_context:,} tokens, and the recommended "
+            "configuration uses the largest tested context window."
+        )
+    return (
+        f"This benchmark tried up to {max_tested_context:,} tokens, but the recommended "
+        f"configuration uses {recommended_context:,} tokens because it measured better overall."
+    )
+
+
+def _narrative_for_tier(
+    tier: str,
+    candidate: RecommendationCandidate,
+    max_tested_context: int,
+) -> RecommendationDetails:
+    recommended_context = int(candidate.config.get("num_ctx") or 0)
+    context_window_note = _context_window_note(recommended_context, max_tested_context)
     if tier == "light":
         return RecommendationDetails(
             best_for="Simple chat, short Q&A, cleanup, and lightweight extraction jobs.",
@@ -72,6 +95,9 @@ def _narrative_for_tier(tier: str, candidate: RecommendationCandidate) -> Recomm
                 },
             ],
             summary="This is a practical everyday choice for quick local assistance, but it will feel limited on larger or more agentic workloads.",
+            recommended_context=recommended_context,
+            max_tested_context=max_tested_context,
+            context_window_note=context_window_note,
         )
     if tier == "strong":
         return RecommendationDetails(
@@ -103,6 +129,9 @@ def _narrative_for_tier(tier: str, candidate: RecommendationCandidate) -> Recomm
                 },
             ],
             summary="This is the stronger choice when you want the model to handle longer prompts, more tools, and heavier assistant-style work.",
+            recommended_context=recommended_context,
+            max_tested_context=max_tested_context,
+            context_window_note=context_window_note,
         )
     return RecommendationDetails(
         best_for="Interactive assistants, summarization, drafting, moderate coding help, and basic tool use.",
@@ -133,11 +162,17 @@ def _narrative_for_tier(tier: str, candidate: RecommendationCandidate) -> Recomm
             },
         ],
         summary="This is the middle-ground option for a useful assistant that still keeps resource use under control.",
+        recommended_context=recommended_context,
+        max_tested_context=max_tested_context,
+        context_window_note=context_window_note,
     )
 
 
-def _build_details(candidate: RecommendationCandidate) -> RecommendationDetails:
-    return _narrative_for_tier(_tier_from_candidate(candidate), candidate)
+def _build_details(
+    candidate: RecommendationCandidate,
+    max_tested_context: int,
+) -> RecommendationDetails:
+    return _narrative_for_tier(_tier_from_candidate(candidate), candidate, max_tested_context)
 
 
 def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, str, dict[str, Any]]:
@@ -172,14 +207,16 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
     def gpu_backed(row: RecommendationCandidate) -> bool:
         return int(row.config.get("num_gpu") or 0) != 0
 
-    def stability_score(row: RecommendationCandidate) -> tuple[int, float, float, int, float]:
+    def stability_score(row: RecommendationCandidate) -> tuple[int, int, int, float, float, int, float]:
         metrics = row.metrics
         config = row.config
         gpu_priority = 0 if gpu_backed(row) else 1
+        num_ctx = int(config.get("num_ctx") or 0)
+        num_thread = int(config.get("num_thread") or 0)
         vram = float(metrics.get("max_vram_used_mb") or 0)
         latency = float(metrics.get("total_sec") or 0)
         num_gpu = int(config.get("num_gpu") or 0)
-        return (gpu_priority, vram, latency, -num_gpu, -gen_tps(row))
+        return (gpu_priority, -num_ctx, -num_thread, vram, latency, -num_gpu, -gen_tps(row))
 
     viable = []
     for row in averaged:
@@ -206,11 +243,18 @@ def choose_recommendation(results: list[BenchmarkResult]) -> tuple[dict, dict, s
             "Selected because no successful GPU-backed benchmark result was available, so the "
             "best CPU configuration was used as a fallback."
         )
-    details = _build_details(selected)
+    max_tested_context = max(
+        (int((row.config or {}).get("num_ctx") or 0) for row in results),
+        default=0,
+    )
+    details = _build_details(selected, max_tested_context)
     return selected.config, selected.metrics, reason, {
         "recommendation_version": RECOMMENDATION_VERSION,
         "best_for": details.best_for,
         "not_ideal_for": details.not_ideal_for,
         "examples": details.examples,
         "summary": details.summary,
+        "recommended_context": details.recommended_context,
+        "max_tested_context": details.max_tested_context,
+        "context_window_note": details.context_window_note,
     }

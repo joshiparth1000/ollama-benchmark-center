@@ -12,7 +12,10 @@ describe("recommendation narrative", () => {
         best_for: "Interactive assistants and drafting.",
         not_ideal_for: ["Very large batch serving."],
         examples: [{ task: "Draft an email", fit: "Good fit", why: "Short writing is a natural match." }],
-        summary: "This is a strong everyday choice."
+        summary: "This is a strong everyday choice.",
+        recommended_context: 32768,
+        max_tested_context: 65536,
+        context_window_note: "This benchmark tried up to 65,536 tokens."
       }
     });
 
@@ -20,7 +23,10 @@ describe("recommendation narrative", () => {
       bestFor: "Interactive assistants and drafting.",
       notIdealFor: ["Very large batch serving."],
       examples: [{ task: "Draft an email", fit: "Good fit", why: "Short writing is a natural match." }],
-      summary: "This is a strong everyday choice."
+      summary: "This is a strong everyday choice.",
+      recommendedContext: 32768,
+      maxTestedContext: 65536,
+      contextWindowNote: "This benchmark tried up to 65,536 tokens."
     });
   });
 });

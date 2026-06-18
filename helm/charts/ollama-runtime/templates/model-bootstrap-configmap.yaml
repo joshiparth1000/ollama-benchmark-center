@@ -1,0 +1,58 @@
+{{- if and .Values.modelBootstrap.enabled (gt (len .Values.modelBootstrap.models) 0) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-runtime-model-bootstrap
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "ollama-runtime.labels" . | nindent 4 }}
+data:
+  bootstrap.sh: |-
+    #!/bin/sh
+    set -eu
+
+    ollama serve &
+    server_pid="$!"
+
+    cleanup() {
+      kill "$server_pid" 2>/dev/null || true
+    }
+    trap cleanup INT TERM
+
+    elapsed=0
+    until ollama list >/dev/null 2>&1; do
+      if [ "$elapsed" -ge "${MODEL_BOOTSTRAP_WAIT_SECONDS:-120}" ]; then
+        echo "Timed out waiting for Ollama to become ready" >&2
+        cleanup
+        exit 1
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+
+    while IFS='|' read -r file_name model_name || [ -n "$file_name$model_name" ]; do
+      [ -n "$file_name" ] || continue
+      [ -n "$model_name" ] || continue
+      modelfile="/opt/ollama-runtime/$file_name"
+      if [ ! -f "$modelfile" ]; then
+        echo "Skipping $model_name because $modelfile is missing" >&2
+        continue
+      fi
+      if [ "${MODEL_BOOTSTRAP_RECREATE_EXISTING:-true}" != "true" ] && ollama list | awk 'NR > 1 {print $1}' | grep -Fx "$model_name" >/dev/null 2>&1; then
+        echo "Model $model_name already exists; skipping"
+        continue
+      fi
+      echo "Creating Ollama model $model_name from $modelfile"
+      ollama create "$model_name" -f "$modelfile"
+    done < /opt/ollama-runtime/models.txt
+
+    wait "$server_pid"
+  models.txt: |-
+{{- range $index, $model := .Values.modelBootstrap.models }}
+    model-{{ $index }}.Modelfile|{{ required "modelBootstrap.models[].name is required" $model.name }}
+{{- end }}
+{{- range $index, $model := .Values.modelBootstrap.models }}
+  model-{{ $index }}.Modelfile: |-
+{{ required "modelBootstrap.models[].modelfile is required" $model.modelfile | nindent 4 }}
+{{- end }}
+{{- end }}

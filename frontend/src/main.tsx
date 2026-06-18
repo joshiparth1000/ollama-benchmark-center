@@ -110,6 +110,13 @@ function formatChartLabel(config: Record<string, number | string>): string {
   return `${scope}-${predict}`;
 }
 
+function formatTokens(value: number | null | undefined): string {
+  if (!value) {
+    return "n/a";
+  }
+  return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
+}
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
@@ -696,6 +703,14 @@ function RunResults({ run }: { run: BenchmarkRun }) {
                 <div className="mt-1 font-medium">{Number(summary.gen_tps ?? 0).toFixed(2)}</div>
               </div>
               <div className="rounded border border-line p-3">
+                <div className="text-xs text-slate-400">Recommended context</div>
+                <div className="mt-1 font-medium">{formatTokens(recommendationNarrative?.recommendedContext)} tokens</div>
+              </div>
+              <div className="rounded border border-line p-3">
+                <div className="text-xs text-slate-400">Max tested context</div>
+                <div className="mt-1 font-medium">{formatTokens(recommendationNarrative?.maxTestedContext)} tokens</div>
+              </div>
+              <div className="rounded border border-line p-3">
                 <div className="text-xs text-slate-400">Prompt TPS</div>
                 <div className="mt-1 font-medium">{Number(summary.prompt_tps ?? 0).toFixed(2)}</div>
               </div>
@@ -712,6 +727,9 @@ function RunResults({ run }: { run: BenchmarkRun }) {
                   <div>
                     <div className="text-xs text-slate-400">What this means</div>
                     <p className="mt-1 text-sm text-slate-200">{recommendationNarrative?.summary ?? recommendation.data.reason}</p>
+                    {recommendationNarrative?.contextWindowNote ? (
+                      <p className="mt-2 text-sm text-slate-300">{recommendationNarrative.contextWindowNote}</p>
+                    ) : null}
                     <p className="mt-3 text-xs uppercase text-slate-500">Why we picked it</p>
                     <p className="mt-1 text-sm text-slate-300">{recommendation.data.reason}</p>
                   </div>

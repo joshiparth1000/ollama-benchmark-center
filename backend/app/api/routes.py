@@ -147,7 +147,7 @@ async def create_benchmark_run(payload: BenchmarkRunCreate, session: AsyncSessio
             if hardware:
                 await host_repo.update(host, HostUpdate(status="online"))
                 await host_repo.add_snapshot(host.id, hardware)
-        matrix = build_matrix(payload.mode, gpu_available, hardware)
+        matrix = build_matrix(payload.mode, gpu_available, hardware, payload.model)
     try:
         agent_run = await AgentClient(host.agent_url).start_benchmark(
             {"model": payload.model, "mode": payload.mode, "prompt": payload.prompt, "matrix": matrix}

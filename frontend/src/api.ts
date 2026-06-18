@@ -46,6 +46,9 @@ export type Recommendation = {
     not_ideal_for: string[];
     examples: Array<{ task: string; fit: string; why: string }>;
     summary: string;
+    recommended_context?: number;
+    max_tested_context?: number;
+    context_window_note?: string;
   };
 };
 

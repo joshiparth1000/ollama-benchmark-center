@@ -11,6 +11,21 @@ ollama:
     limits:
       nvidia.com/gpu: 1
 
+modelBootstrap:
+  enabled: true
+  waitSeconds: 120
+  recreateExisting: true
+  models:
+    - name: qwen3-coder-tuned
+      modelfile: |
+        FROM qwen3-coder:30b
+        PARAMETER temperature 0.2
+        PARAMETER num_ctx 4096
+        PARAMETER num_batch 512
+        PARAMETER num_predict 128
+        PARAMETER num_gpu -1
+        PARAMETER num_thread 8
+
 agent:
   image: ghcr.io/joshiparth1000/ollama-benchmark-center/agent
   tag: "35d506a"
