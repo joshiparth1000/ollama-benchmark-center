@@ -28,7 +28,7 @@ modelBootstrap:
 
 agent:
   image: ghcr.io/joshiparth1000/ollama-benchmark-center/agent
-  tag: "35d506a"
+  tag: "650812d"
   pullPolicy: Always
   servicePort: 9000
   apiKey: dev-agent-key
